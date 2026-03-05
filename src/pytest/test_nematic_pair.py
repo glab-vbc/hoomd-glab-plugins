@@ -3,7 +3,10 @@
 
 """Tests for the NematicPair anisotropic pair potential.
 
-Potential: U = -epsilon * (n_i . n_j)^2 * (1 - r^2/r_c^2)^2
+Potential: U = -epsilon * (n_i . n_j)^p * (1 - r^2/r_c^2)^2
+
+   p = 2 (nematic): parallel and anti-parallel equally favoured
+   p = 1 (polar):   only parallel favoured
 
 Run with: python -m pytest test_nematic_pair.py -v
 """
@@ -37,14 +40,14 @@ def make_pair_snapshot(device, pos_i, pos_j, quat_i, quat_j, L=20.0):
     return snap
 
 
-def make_sim_with_nematic(device, snap, epsilon, r_cut):
+def make_sim_with_nematic(device, snap, epsilon, r_cut, power=2):
     """Set up a simulation with only the NematicPair force."""
     sim = hoomd.Simulation(device=device)
     sim.create_state_from_snapshot(snap)
 
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
     nematic = align_angle.NematicPair(nlist=nlist, default_r_cut=r_cut)
-    nematic.params[("A", "A")] = dict(epsilon=epsilon)
+    nematic.params[("A", "A")] = dict(epsilon=epsilon, power=power)
 
     nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
     integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[nematic])
@@ -316,7 +319,7 @@ class TestNematicPairTorques:
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
         nematic = align_angle.NematicPair(nlist=nlist, default_r_cut=r_cut)
-        nematic.params[("A", "A")] = dict(epsilon=epsilon)
+        nematic.params[("A", "A")] = dict(epsilon=epsilon, power=2)
 
         # Fix positions, only integrate orientational DOF
         langevin = hoomd.md.methods.Langevin(filter=hoomd.filter.All(), kT=0.0)
@@ -435,6 +438,236 @@ class TestNematicPairNumerical:
                 )
                 sim_s, nematic_s = make_sim_with_nematic(
                     device, snap_s, epsilon, r_cut
+                )
+                energies_s = nematic_s.energies
+                if energies_s is not None:
+                    grad[dim] += coeff * sum(energies_s)
+
+        grad /= 2 * h
+        force_numerical = -grad
+
+        np.testing.assert_allclose(force_on_j, force_numerical, atol=1e-3)
+
+
+class TestPolarMode:
+    """Tests for power=1 (linear / polar) mode."""
+
+    def test_parallel_energy_polar(self, device):
+        """Parallel orientations with power=1: U = -epsilon * g."""
+        epsilon = 5.0
+        r_cut = 3.0
+        r = 1.5
+        x = 1.0 - r ** 2 / r_cut ** 2
+        g = x ** 2
+        expected_U = -epsilon * 1.0 * g  # (n_i.n_j)^1 = 1
+
+        snap = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=[r, 0, 0],
+            quat_i=[1, 0, 0, 0],
+            quat_j=[1, 0, 0, 0],
+        )
+        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, power=1)
+
+        energies = nematic.energies
+        if energies is not None:
+            total_e = sum(energies)
+            assert total_e == pytest.approx(expected_U, rel=1e-5)
+
+    def test_anti_parallel_energy_polar(self, device):
+        """Anti-parallel with power=1: (n_i.n_j)^1 = -1, U = +epsilon * g > 0."""
+        epsilon = 5.0
+        r_cut = 3.0
+        r = 1.5
+        x = 1.0 - r ** 2 / r_cut ** 2
+        g = x ** 2
+        expected_U = -epsilon * (-1.0) * g  # = +epsilon * g > 0
+
+        snap = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=[r, 0, 0],
+            quat_i=[1, 0, 0, 0],
+            quat_j=[0, 0, 0, 1],  # n_j = (-1,0,0)
+        )
+        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, power=1)
+
+        energies = nematic.energies
+        if energies is not None:
+            total_e = sum(energies)
+            assert total_e == pytest.approx(expected_U, rel=1e-5)
+            assert total_e > 0, "Anti-parallel should be repulsive in polar mode"
+
+    def test_polar_vs_nematic_symmetry_broken(self, device):
+        """power=1 breaks nematic symmetry: E(parallel) != E(anti-parallel)."""
+        epsilon = 5.0
+        r_cut = 3.0
+        r = 1.5
+
+        snap_par = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=[r, 0, 0],
+            quat_i=[1, 0, 0, 0],
+            quat_j=[1, 0, 0, 0],
+        )
+        sim_par, nem_par = make_sim_with_nematic(
+            device, snap_par, epsilon, r_cut, power=1
+        )
+
+        snap_anti = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=[r, 0, 0],
+            quat_i=[1, 0, 0, 0],
+            quat_j=[0, 0, 0, 1],
+        )
+        sim_anti, nem_anti = make_sim_with_nematic(
+            device, snap_anti, epsilon, r_cut, power=1
+        )
+
+        e_par = sum(nem_par.energies) if nem_par.energies is not None else None
+        e_anti = sum(nem_anti.energies) if nem_anti.energies is not None else None
+        if e_par is not None and e_anti is not None:
+            assert e_par != pytest.approx(e_anti, abs=1e-6), \
+                "Polar mode should distinguish parallel from anti-parallel"
+            assert e_par < e_anti, "Parallel should be lower energy in polar mode"
+
+    def test_torque_drives_polar_alignment(self, device):
+        """In polar mode, torque should drive toward parallel (not anti-parallel)."""
+        epsilon = 50.0
+        r_cut = 5.0
+        r = 1.5
+
+        # Start 135 deg misaligned (closer to anti-parallel)
+        theta = 3 * np.pi / 4
+        c = np.cos(theta / 2)
+        s = np.sin(theta / 2)
+        snap = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=[r, 0, 0],
+            quat_i=[1, 0, 0, 0],
+            quat_j=[c, 0, 0, s],
+        )
+
+        sim = hoomd.Simulation(device=device)
+        sim.create_state_from_snapshot(snap)
+
+        nlist = hoomd.md.nlist.Cell(buffer=0.4)
+        nematic = align_angle.NematicPair(nlist=nlist, default_r_cut=r_cut)
+        nematic.params[("A", "A")] = dict(epsilon=epsilon, power=1)
+
+        langevin = hoomd.md.methods.Langevin(filter=hoomd.filter.All(), kT=0.0)
+        integrator = hoomd.md.Integrator(
+            dt=0.001, methods=[langevin], forces=[nematic]
+        )
+        integrator.integrate_rotational_dof = True
+        sim.operations.integrator = integrator
+        sim.run(0)
+
+        # Compute initial n_i . n_j (should be negative, ~-0.707)
+        with sim.state.cpu_local_snapshot as ss:
+            tags = np.array(ss.particles.tag[:])
+            quats = np.array(ss.particles.orientation[:])
+        order = np.argsort(tags)
+        quats = quats[order]
+        n0 = quat_rotate(quats[0], [1, 0, 0])
+        n1 = quat_rotate(quats[1], [1, 0, 0])
+        cos_before = np.dot(n0, n1)
+
+        sim.run(200)
+
+        with sim.state.cpu_local_snapshot as ss:
+            tags = np.array(ss.particles.tag[:])
+            quats = np.array(ss.particles.orientation[:])
+        order = np.argsort(tags)
+        quats = quats[order]
+        n0 = quat_rotate(quats[0], [1, 0, 0])
+        n1 = quat_rotate(quats[1], [1, 0, 0])
+        cos_after = np.dot(n0, n1)
+
+        assert cos_after > cos_before, (
+            f"Polar mode: n_i.n_j should increase: {cos_before:.4f} -> {cos_after:.4f}"
+        )
+
+    def test_energy_formula_polar(self, device):
+        """Verify energy matches the analytic formula for power=1."""
+        epsilon = 7.0
+        r_cut = 4.0
+
+        theta = np.pi / 6
+        c = np.cos(theta / 2)
+        s = np.sin(theta / 2)
+
+        r_vec = np.array([1.0, 0.8, 0.3])
+        r = np.linalg.norm(r_vec)
+
+        snap = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=r_vec.tolist(),
+            quat_i=[1, 0, 0, 0],
+            quat_j=[c, 0, 0, s],
+        )
+        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, power=1)
+
+        n_i = np.array([1, 0, 0], dtype=float)
+        n_j = quat_rotate([c, 0, 0, s], np.array([1, 0, 0], dtype=float))
+        cos_nij = np.dot(n_i, n_j)
+        x = 1.0 - r ** 2 / r_cut ** 2
+        g = x ** 2
+        expected = -epsilon * cos_nij * g  # power=1: no squaring
+
+        energies = nematic.energies
+        if energies is not None:
+            total_e = sum(energies)
+            assert total_e == pytest.approx(expected, rel=1e-5)
+
+    def test_force_finite_difference_polar(self, device):
+        """Compare force with numerical gradient of energy for power=1."""
+        epsilon = 5.0
+        r_cut = 3.5
+        h = 1e-5
+
+        r_base = np.array([1.2, 0.7, 0.4])
+        theta = np.pi / 3
+        c = np.cos(theta / 2)
+        s = np.sin(theta / 2)
+        qj = [c, 0, s, 0]
+
+        snap0 = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=r_base.tolist(),
+            quat_i=[1, 0, 0, 0],
+            quat_j=qj,
+        )
+        sim0, nematic0 = make_sim_with_nematic(
+            device, snap0, epsilon, r_cut, power=1
+        )
+
+        forces = nematic0.forces
+        if forces is None:
+            return
+
+        force_on_j = np.array(forces[1])
+
+        grad = np.zeros(3)
+        for dim in range(3):
+            for sign, coeff in [(+1, +1), (-1, -1)]:
+                r_shift = r_base.copy()
+                r_shift[dim] += sign * h
+                snap_s = make_pair_snapshot(
+                    device,
+                    pos_i=[0, 0, 0],
+                    pos_j=r_shift.tolist(),
+                    quat_i=[1, 0, 0, 0],
+                    quat_j=qj,
+                )
+                sim_s, nematic_s = make_sim_with_nematic(
+                    device, snap_s, epsilon, r_cut, power=1
                 )
                 energies_s = nematic_s.energies
                 if energies_s is not None:

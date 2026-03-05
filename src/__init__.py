@@ -88,13 +88,12 @@ class NematicPair(AnisotropicPair):
         default_r_cut (float): Default cutoff radius :math:`[\mathrm{length}]`.
         mode (str): Energy shifting mode (``"none"`` or ``"shift"``).
 
-    `NematicPair` computes an anisotropic pair potential that attracts
-    particles whose body-frame x-axes are parallel **or** anti-parallel
-    (nematic symmetry):
+    `NematicPair` computes an anisotropic pair potential whose orientational
+    coupling is controlled by the ``power`` parameter:
 
     .. math::
 
-        U_{ij} = -\epsilon \, (\hat{n}_i \cdot \hat{n}_j)^2
+        U_{ij} = -\epsilon \, (\hat{n}_i \cdot \hat{n}_j)^p
                  \left(1 - \frac{r_{ij}^2}{r_c^2}\right)^2
 
     where :math:`\hat{n} = \mathrm{rotate}(q, \hat{x})` is the body-frame
@@ -102,24 +101,36 @@ class NematicPair(AnisotropicPair):
     :math:`g(r) = (1 - r^2/r_c^2)^2` ensures both force and energy vanish
     continuously at the cutoff :math:`r_c`.
 
-    The potential energy is minimized (most negative) when
-    :math:`(\hat{n}_i \cdot \hat{n}_j)^2 = 1` (parallel or anti-parallel) and
-    vanishes when orientations are perpendicular.
+    * ``power = 2`` (**nematic**, default): energy depends on
+      :math:`(\hat{n}_i \cdot \hat{n}_j)^2`, so parallel and anti-parallel
+      orientations are equally favourable.
+
+    * ``power = 1`` (**polar**): energy depends on
+      :math:`\hat{n}_i \cdot \hat{n}_j` linearly, so only parallel
+      orientations are favourable and anti-parallel ones are repulsive.
 
     Example::
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
         nematic = align_angle.NematicPair(nlist=nlist, default_r_cut=3.0)
-        nematic.params[("A", "A")] = dict(epsilon=5.0)
+
+        # Nematic (default, power=2)
+        nematic.params[("A", "A")] = dict(epsilon=5.0, power=2)
+
+        # Polar
+        nematic.params[("A", "A")] = dict(epsilon=5.0, power=1)
+
         sim.operations.integrator.forces.append(nematic)
 
     Attributes:
         params (TypeParameter[``particle types``, dict]):
             The parameters of the nematic potential for each particle type
-            pair.  The dictionary has the following key:
+            pair.  The dictionary has the following keys:
 
             * ``epsilon`` (`float`, **required**) - interaction strength
               :math:`[\mathrm{energy}]`
+            * ``power`` (`int`, **required**) - exponent of the dot product
+              (1 = polar, 2 = nematic)
     """
 
     _cpp_class_name = "AnisoPotentialPairNematic"
@@ -130,6 +141,6 @@ class NematicPair(AnisotropicPair):
         params = TypeParameter(
             "params",
             "particle_types",
-            TypeParameterDict(epsilon=float, len_keys=2),
+            TypeParameterDict(epsilon=float, power=int, len_keys=2),
         )
         self._add_typeparam(params)

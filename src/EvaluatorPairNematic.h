@@ -4,16 +4,19 @@
 /*! \file EvaluatorPairNematic.h
     \brief Defines the nematic pair potential evaluator.
 
-    Potential:
-        U = -epsilon * (n_i . n_j)^2 * (1 - r^2/r_c^2)^2
+    Potential (power p = 1 or 2):
+        U = -epsilon * (n_i . n_j)^p * (1 - r^2/r_c^2)^2
 
     where n_i = rotate(q_i, x_hat), n_j = rotate(q_j, x_hat) are the
     body-frame x-axes of the two particles, and the smooth compact envelope
     g(r) = (1 - r^2/r_c^2)^2 ensures both force and energy vanish continuously
     at the cutoff r_c.
 
-    The potential is minimized when orientations are parallel OR anti-parallel
-    (nematic symmetry).
+    When p = 2 (default), the potential has nematic symmetry: it is minimized
+    for parallel OR anti-parallel orientations.
+
+    When p = 1, the potential has polar symmetry: it is minimized only for
+    parallel orientations and is repulsive for anti-parallel ones.
 */
 
 #ifndef __EVALUATOR_PAIR_NEMATIC_H__
@@ -46,10 +49,11 @@ namespace md
 class EvaluatorPairNematic
     {
     public:
-    //! Per-type-pair parameters: just epsilon
+    //! Per-type-pair parameters: epsilon and power
     struct param_type
         {
         Scalar epsilon;
+        unsigned int power;  // 1 = linear (polar), 2 = squared (nematic)
 
 #ifdef ENABLE_HIP
         void set_memory_hint() const { }
@@ -58,18 +62,20 @@ class EvaluatorPairNematic
         DEVICE void load_shared(char*& ptr, unsigned int& available_bytes) { }
         HOSTDEVICE void allocate_shared(char*& ptr, unsigned int& available_bytes) const { }
 
-        HOSTDEVICE param_type() : epsilon(0) { }
+        HOSTDEVICE param_type() : epsilon(0), power(2) { }
 
 #ifndef __HIPCC__
         param_type(pybind11::dict v, bool managed)
             {
             epsilon = v["epsilon"].cast<Scalar>();
+            power = v["power"].cast<unsigned int>();
             }
 
         pybind11::object toPython()
             {
             pybind11::dict v;
             v["epsilon"] = epsilon;
+            v["power"] = power;
             return v;
             }
 #endif
@@ -114,7 +120,7 @@ class EvaluatorPairNematic
                                     const Scalar _rcutsq,
                                     const param_type& _params)
         : dr(_dr), quat_i(_quat_i), quat_j(_quat_j), rcutsq(_rcutsq),
-          epsilon(_params.epsilon)
+          epsilon(_params.epsilon), power(_params.power)
         {
         }
 
@@ -166,38 +172,52 @@ class EvaluatorPairNematic
         vec3<Scalar> n_i = rotate(quat<Scalar>(quat_i), e_x);
         vec3<Scalar> n_j = rotate(quat<Scalar>(quat_j), e_x);
 
-        // Nematic order parameter: c = n_i . n_j
+        // c = n_i . n_j
         Scalar c = dot(n_i, n_j);
-        Scalar c2 = c * c;
 
         // Smooth compact envelope: x = 1 - r^2/r_c^2,  g = x^2
         Scalar x = Scalar(1.0) - rsq / rcutsq;
         Scalar g = x * x;
 
-        // Energy: U = -epsilon * c^2 * g
-        pair_eng = -epsilon * c2 * g;
+        // Cross product needed for torques in both modes
+        vec3<Scalar> ni_cross_nj = cross(n_i, n_j);
 
-        // --- Force on i (from radial envelope) ---
-        // dU/dr_vec = -epsilon * c^2 * dg/dr_vec
-        // dg/dr_vec = 2*x * dx/dr_vec = 2*x * (-2/r_c^2) * r_vec
-        //           = -4*x / r_c^2 * dr   (since dr = r_i - r_j is the displacement)
-        // F_i = -dU/dr_i = epsilon * c^2 * (-4*x / r_c^2) * dr
-        // This is attractive (toward j) when x > 0 and c^2 > 0.
-        Scalar f_mag = -Scalar(4.0) * epsilon * c2 * x / rcutsq;
+        Scalar f_mag;
+        Scalar t_prefactor;
+
+        if (power == 1)
+            {
+            // Linear (polar) mode: U = -epsilon * c * g
+            pair_eng = -epsilon * c * g;
+
+            // Force: dU/dr_vec = -epsilon * c * dg/dr_vec
+            //   dg/dr_vec = -4*x / r_c^2 * dr
+            //   F_i = -dU/dr_i = epsilon * c * (-4*x/r_c^2) * dr
+            f_mag = -Scalar(4.0) * epsilon * c * x / rcutsq;
+
+            // Torque: dU/dc = -epsilon * g
+            //   dU/dn_i = -epsilon * g * n_j
+            //   torque_i = cross(dU/dn_i, n_i) = -epsilon*g * cross(n_j, n_i)
+            //            = epsilon*g * cross(n_i, n_j)
+            t_prefactor = epsilon * g;
+            }
+        else
+            {
+            // Squared (nematic) mode: U = -epsilon * c^2 * g
+            Scalar c2 = c * c;
+            pair_eng = -epsilon * c2 * g;
+
+            // Force: F_i = -dU/dr_i = epsilon * c^2 * (-4*x/r_c^2) * dr
+            f_mag = -Scalar(4.0) * epsilon * c2 * x / rcutsq;
+
+            // Torque: dU/dc = -2*epsilon*c*g
+            //   torque_i = 2*epsilon*c*g * cross(n_i, n_j)
+            t_prefactor = Scalar(2.0) * epsilon * c * g;
+            }
+
         force.x = f_mag * dr.x;
         force.y = f_mag * dr.y;
         force.z = f_mag * dr.z;
-
-        // --- Torques (from orientational dependence) ---
-        // dU/dc = -2*epsilon*c*g
-        // dU/dn_i = dU/dc * n_j = -2*epsilon*c*g * n_j
-        // HOOMD convention (cf. EvaluatorPairYLZ): torque = cross(dU/dn, n)
-        // torque_i = cross(-2*eps*c*g * n_j, n_i) = -2*eps*c*g * cross(n_j, n_i)
-        //          = 2*eps*c*g * cross(n_i, n_j)
-        // torque_j = cross(-2*eps*c*g * n_i, n_j) = -2*eps*c*g * cross(n_i, n_j)
-        //          = -torque_i
-        Scalar t_prefactor = Scalar(2.0) * epsilon * c * g;
-        vec3<Scalar> ni_cross_nj = cross(n_i, n_j);
 
         torque_i.x = t_prefactor * ni_cross_nj.x;
         torque_i.y = t_prefactor * ni_cross_nj.y;
@@ -242,6 +262,7 @@ class EvaluatorPairNematic
     Scalar4 quat_i, quat_j;
     Scalar rcutsq;
     Scalar epsilon;
+    unsigned int power;
     };
 
     } // end namespace md
