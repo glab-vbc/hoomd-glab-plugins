@@ -92,48 +92,53 @@ class DirectorPair(AnisotropicPair):
         mode (str): Energy shifting mode (``"none"`` or ``"shift"``).
 
     `DirectorPair` computes an anisotropic pair potential whose orientational
-    coupling is controlled by the ``power`` parameter:
+    coupling is controlled by the ``multiplicity`` and ``phase`` parameters:
 
     .. math::
 
-        U_{ij} = -\epsilon \, (\hat{n}_i \cdot \hat{n}_j)^p
+        U_{ij} = -\epsilon \, \cos(m\,\alpha_{ij} + \varphi_0)
                  \left(1 - \frac{r_{ij}^2}{r_c^2}\right)^2
 
-    where :math:`\hat{n} = \mathrm{rotate}(q, \hat{x})` is the body-frame
-    x-axis rotated into the lab frame, and the smooth compact envelope
+    where :math:`\alpha_{ij} = \arccos(\hat{n}_i \cdot \hat{n}_j)` is the
+    angle between directors,
+    :math:`\hat{n} = \mathrm{rotate}(q, \hat{x})` is the body-frame
+    x-axis rotated into the lab frame, :math:`m` is the ``multiplicity``,
+    :math:`\varphi_0` is the ``phase``, and the smooth compact envelope
     :math:`g(r) = (1 - r^2/r_c^2)^2` ensures both force and energy vanish
     continuously at the cutoff :math:`r_c`.
 
-    * ``power = 2`` (**nematic**, default): energy depends on
-      :math:`(\hat{n}_i \cdot \hat{n}_j)^2`, so parallel and anti-parallel
-      orientations are equally favourable.
+    * ``multiplicity = 1, phase = 0`` (**polar**, default): energy depends
+      on :math:`\cos\alpha`, so only parallel orientations are favourable
+      and anti-parallel ones are repulsive.
 
-    * ``power = 1`` (**polar**): energy depends on
-      :math:`\hat{n}_i \cdot \hat{n}_j` linearly, so only parallel
-      orientations are favourable and anti-parallel ones are repulsive.
+    * ``multiplicity = 2, phase = 0`` (**nematic**): energy depends on
+      :math:`\cos 2\alpha`, so parallel and anti-parallel orientations are
+      equally favourable.
 
     Example::
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
         director = align_angle.DirectorPair(nlist=nlist, default_r_cut=3.0)
 
-        # Nematic (default, power=2)
-        director.params[("A", "A")] = dict(epsilon=5.0, power=2)
+        # Polar (default, multiplicity=1)
+        director.params[("A", "A")] = dict(epsilon=5.0)
 
-        # Polar
-        director.params[("A", "A")] = dict(epsilon=5.0, power=1)
+        # Nematic
+        director.params[("A", "A")] = dict(epsilon=5.0, multiplicity=2)
 
         sim.operations.integrator.forces.append(director)
 
     Attributes:
         params (TypeParameter[``particle types``, dict]):
-            The parameters of the nematic potential for each particle type
-            pair.  The dictionary has the following keys:
+            The parameters of the director pair potential for each particle
+            type pair.  The dictionary has the following keys:
 
             * ``epsilon`` (`float`, **required**) - interaction strength
               :math:`[\mathrm{energy}]`
-            * ``power`` (`int`, **required**) - exponent of the dot product
-              (1 = polar, 2 = nematic)
+            * ``multiplicity`` (`int`, **optional**, default 1) - angular
+              multiplicity :math:`m`
+            * ``phase`` (`float`, **optional**, default 0) - phase offset
+              :math:`\varphi_0` in radians
     """
 
     _cpp_class_name = "AnisoPotentialPairNematic"
@@ -144,6 +149,6 @@ class DirectorPair(AnisotropicPair):
         params = TypeParameter(
             "params",
             "particle_types",
-            TypeParameterDict(epsilon=float, power=int, len_keys=2),
+            TypeParameterDict(epsilon=float, multiplicity=1, phase=0.0, len_keys=2),
         )
         self._add_typeparam(params)

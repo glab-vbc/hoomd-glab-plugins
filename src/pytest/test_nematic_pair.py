@@ -3,10 +3,10 @@
 
 """Tests for the DirectorPair anisotropic pair potential.
 
-Potential: U = -epsilon * (n_i . n_j)^p * (1 - r^2/r_c^2)^2
+Potential: U = -epsilon * cos(m * alpha + phase) * (1 - r^2/r_c^2)^2
 
-   p = 2 (nematic): parallel and anti-parallel equally favoured
-   p = 1 (polar):   only parallel favoured
+   m = 2 (nematic): parallel and anti-parallel equally favoured
+   m = 1 (polar):   only parallel favoured
 
 Run with: python -m pytest test_nematic_pair.py -v
 """
@@ -40,14 +40,14 @@ def make_pair_snapshot(device, pos_i, pos_j, quat_i, quat_j, L=20.0):
     return snap
 
 
-def make_sim_with_nematic(device, snap, epsilon, r_cut, power=2):
+def make_sim_with_nematic(device, snap, epsilon, r_cut, multiplicity=2, phase=0.0):
     """Set up a simulation with only the DirectorPair force."""
     sim = hoomd.Simulation(device=device)
     sim.create_state_from_snapshot(snap)
 
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
     nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=r_cut)
-    nematic.params[("A", "A")] = dict(epsilon=epsilon, power=power)
+    nematic.params[("A", "A")] = dict(epsilon=epsilon, multiplicity=multiplicity, phase=phase)
 
     nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
     integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[nematic])
@@ -111,11 +111,14 @@ class TestDirectorPairEnergy:
             total_e = sum(energies)
             assert total_e == pytest.approx(expected_U, rel=1e-5)
 
-    def test_perpendicular_zero_energy(self, device):
-        """Perpendicular orientations: (n_i.n_j)^2 = 0, U = 0."""
+    def test_perpendicular_max_energy(self, device):
+        """Perpendicular orientations with m=2: cos(pi) = -1, U = epsilon * g."""
         epsilon = 10.0
         r_cut = 3.0
         r = 1.0
+        x = 1.0 - r ** 2 / r_cut ** 2
+        g = x ** 2
+        expected_U = epsilon * g  # -epsilon * cos(pi) * g = epsilon * g
 
         # 90° around z: q = (cos45, 0, 0, sin45) → body x → lab y
         c45 = np.cos(np.pi / 4)
@@ -132,7 +135,7 @@ class TestDirectorPairEnergy:
         energies = nematic.energies
         if energies is not None:
             total_e = sum(energies)
-            assert total_e == pytest.approx(0.0, abs=1e-10)
+            assert total_e == pytest.approx(expected_U, rel=1e-5)
 
     def test_beyond_cutoff(self, device):
         """Particles beyond cutoff: zero energy/force/torque."""
@@ -231,8 +234,8 @@ class TestDirectorPairForces:
             total_t = np.sum(torques, axis=0)
             np.testing.assert_allclose(total_t, [0, 0, 0], atol=1e-10)
 
-    def test_no_force_when_perpendicular(self, device):
-        """Perpendicular orientations: (n_i.n_j)^2 = 0, so no radial force."""
+    def test_repulsive_force_when_perpendicular(self, device):
+        """Perpendicular orientations with m=2: cos(2*pi/2) = -1 → repulsive."""
         epsilon = 10.0
         r_cut = 3.0
         r = 1.5
@@ -250,7 +253,14 @@ class TestDirectorPairForces:
 
         forces = nematic.forces
         if forces is not None:
-            np.testing.assert_allclose(forces, 0.0, atol=1e-10)
+            # Force on i should point away from j (-x), i.e., repulsive
+            assert forces[0][0] < 0, "Force on i should be away from j (-x)"
+            # Force on j should point away from i (+x)
+            assert forces[1][0] > 0, "Force on j should be away from i (+x)"
+            # Newton's third law
+            np.testing.assert_allclose(
+                np.sum(forces, axis=0), [0, 0, 0], atol=1e-10
+            )
 
 
 class TestDirectorPairTorques:
@@ -319,7 +329,7 @@ class TestDirectorPairTorques:
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
         nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=r_cut)
-        nematic.params[("A", "A")] = dict(epsilon=epsilon, power=2)
+        nematic.params[("A", "A")] = dict(epsilon=epsilon, multiplicity=2)
 
         # Fix positions, only integrate orientational DOF
         langevin = hoomd.md.methods.Langevin(filter=hoomd.filter.All(), kT=0.0)
@@ -385,9 +395,10 @@ class TestDirectorPairNumerical:
         n_i = np.array([1, 0, 0], dtype=float)
         n_j = quat_rotate([c, 0, 0, s], np.array([1, 0, 0], dtype=float))
         cos_nij = np.dot(n_i, n_j)
+        alpha = np.arccos(cos_nij)
         x = 1.0 - r ** 2 / r_cut ** 2
         g = x ** 2
-        expected = -epsilon * cos_nij ** 2 * g
+        expected = -epsilon * np.cos(2 * alpha) * g
 
         energies = nematic.energies
         if energies is not None:
@@ -450,10 +461,10 @@ class TestDirectorPairNumerical:
 
 
 class TestPolarMode:
-    """Tests for power=1 (linear / polar) mode."""
+    """Tests for multiplicity=1 (polar) mode."""
 
     def test_parallel_energy_polar(self, device):
-        """Parallel orientations with power=1: U = -epsilon * g."""
+        """Parallel orientations with multiplicity=1: U = -epsilon * g."""
         epsilon = 5.0
         r_cut = 3.0
         r = 1.5
@@ -468,7 +479,7 @@ class TestPolarMode:
             quat_i=[1, 0, 0, 0],
             quat_j=[1, 0, 0, 0],
         )
-        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, power=1)
+        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, multiplicity=1)
 
         energies = nematic.energies
         if energies is not None:
@@ -476,7 +487,7 @@ class TestPolarMode:
             assert total_e == pytest.approx(expected_U, rel=1e-5)
 
     def test_anti_parallel_energy_polar(self, device):
-        """Anti-parallel with power=1: (n_i.n_j)^1 = -1, U = +epsilon * g > 0."""
+        """Anti-parallel with multiplicity=1: cos(pi) = -1, U = +epsilon * g > 0."""
         epsilon = 5.0
         r_cut = 3.0
         r = 1.5
@@ -491,7 +502,7 @@ class TestPolarMode:
             quat_i=[1, 0, 0, 0],
             quat_j=[0, 0, 0, 1],  # n_j = (-1,0,0)
         )
-        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, power=1)
+        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, multiplicity=1)
 
         energies = nematic.energies
         if energies is not None:
@@ -500,7 +511,7 @@ class TestPolarMode:
             assert total_e > 0, "Anti-parallel should be repulsive in polar mode"
 
     def test_polar_vs_nematic_symmetry_broken(self, device):
-        """power=1 breaks nematic symmetry: E(parallel) != E(anti-parallel)."""
+        """multiplicity=1 breaks nematic symmetry: E(parallel) != E(anti-parallel)."""
         epsilon = 5.0
         r_cut = 3.0
         r = 1.5
@@ -513,7 +524,7 @@ class TestPolarMode:
             quat_j=[1, 0, 0, 0],
         )
         sim_par, nem_par = make_sim_with_nematic(
-            device, snap_par, epsilon, r_cut, power=1
+            device, snap_par, epsilon, r_cut, multiplicity=1
         )
 
         snap_anti = make_pair_snapshot(
@@ -524,7 +535,7 @@ class TestPolarMode:
             quat_j=[0, 0, 0, 1],
         )
         sim_anti, nem_anti = make_sim_with_nematic(
-            device, snap_anti, epsilon, r_cut, power=1
+            device, snap_anti, epsilon, r_cut, multiplicity=1
         )
 
         e_par = sum(nem_par.energies) if nem_par.energies is not None else None
@@ -557,7 +568,7 @@ class TestPolarMode:
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
         nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=r_cut)
-        nematic.params[("A", "A")] = dict(epsilon=epsilon, power=1)
+        nematic.params[("A", "A")] = dict(epsilon=epsilon, multiplicity=1)
 
         langevin = hoomd.md.methods.Langevin(filter=hoomd.filter.All(), kT=0.0)
         integrator = hoomd.md.Integrator(
@@ -593,7 +604,7 @@ class TestPolarMode:
         )
 
     def test_energy_formula_polar(self, device):
-        """Verify energy matches the analytic formula for power=1."""
+        """Verify energy matches the analytic formula for multiplicity=1."""
         epsilon = 7.0
         r_cut = 4.0
 
@@ -611,14 +622,14 @@ class TestPolarMode:
             quat_i=[1, 0, 0, 0],
             quat_j=[c, 0, 0, s],
         )
-        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, power=1)
+        sim, nematic = make_sim_with_nematic(device, snap, epsilon, r_cut, multiplicity=1)
 
         n_i = np.array([1, 0, 0], dtype=float)
         n_j = quat_rotate([c, 0, 0, s], np.array([1, 0, 0], dtype=float))
         cos_nij = np.dot(n_i, n_j)
         x = 1.0 - r ** 2 / r_cut ** 2
         g = x ** 2
-        expected = -epsilon * cos_nij * g  # power=1: no squaring
+        expected = -epsilon * cos_nij * g  # multiplicity=1: cos(alpha) = cos_nij
 
         energies = nematic.energies
         if energies is not None:
@@ -626,7 +637,7 @@ class TestPolarMode:
             assert total_e == pytest.approx(expected, rel=1e-5)
 
     def test_force_finite_difference_polar(self, device):
-        """Compare force with numerical gradient of energy for power=1."""
+        """Compare force with numerical gradient of energy for multiplicity=1."""
         epsilon = 5.0
         r_cut = 3.5
         h = 1e-5
@@ -645,7 +656,7 @@ class TestPolarMode:
             quat_j=qj,
         )
         sim0, nematic0 = make_sim_with_nematic(
-            device, snap0, epsilon, r_cut, power=1
+            device, snap0, epsilon, r_cut, multiplicity=1
         )
 
         forces = nematic0.forces
@@ -667,7 +678,143 @@ class TestPolarMode:
                     quat_j=qj,
                 )
                 sim_s, nematic_s = make_sim_with_nematic(
-                    device, snap_s, epsilon, r_cut, power=1
+                    device, snap_s, epsilon, r_cut, multiplicity=1
+                )
+                energies_s = nematic_s.energies
+                if energies_s is not None:
+                    grad[dim] += coeff * sum(energies_s)
+
+        grad /= 2 * h
+        force_numerical = -grad
+
+        np.testing.assert_allclose(force_on_j, force_numerical, atol=1e-3)
+
+
+class TestDirectorPairPhase:
+    """Tests for the phase parameter."""
+
+    def test_phase_pi_repels_parallel(self, device):
+        """m=1, phase=pi: at parallel (alpha=0), cos(0+pi)=-1, U = epsilon*g > 0."""
+        epsilon = 5.0
+        r_cut = 3.0
+        r = 1.5
+        x = 1.0 - r ** 2 / r_cut ** 2
+        g = x ** 2
+        expected_U = epsilon * g  # -epsilon * cos(pi) * g = epsilon * g
+
+        snap = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=[r, 0, 0],
+            quat_i=[1, 0, 0, 0],
+            quat_j=[1, 0, 0, 0],
+        )
+        sim, nematic = make_sim_with_nematic(
+            device, snap, epsilon, r_cut, multiplicity=1, phase=np.pi
+        )
+
+        energies = nematic.energies
+        if energies is not None:
+            total_e = sum(energies)
+            assert total_e == pytest.approx(expected_U, rel=1e-5)
+            assert total_e > 0
+
+    def test_phase_pi_attracts_anti_parallel(self, device):
+        """m=1, phase=pi: at anti-parallel (alpha=pi), cos(2pi)=1, U = -epsilon*g."""
+        epsilon = 5.0
+        r_cut = 3.0
+        r = 1.5
+        x = 1.0 - r ** 2 / r_cut ** 2
+        g = x ** 2
+        expected_U = -epsilon * g  # -epsilon * cos(2pi) * g = -epsilon * g
+
+        snap = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=[r, 0, 0],
+            quat_i=[1, 0, 0, 0],
+            quat_j=[0, 0, 0, 1],  # anti-parallel
+        )
+        sim, nematic = make_sim_with_nematic(
+            device, snap, epsilon, r_cut, multiplicity=1, phase=np.pi
+        )
+
+        energies = nematic.energies
+        if energies is not None:
+            total_e = sum(energies)
+            assert total_e == pytest.approx(expected_U, rel=1e-5)
+            assert total_e < 0
+
+    def test_newtons_third_law_with_phase(self, device):
+        """Total force and torque are zero with phase != 0."""
+        epsilon = 5.0
+        r_cut = 3.0
+        c = np.cos(np.pi / 8)
+        s = np.sin(np.pi / 8)
+        snap = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=[2.0, 0.5, 0],
+            quat_i=[1, 0, 0, 0],
+            quat_j=[c, 0, 0, s],
+        )
+        sim, nematic = make_sim_with_nematic(
+            device, snap, epsilon, r_cut, multiplicity=2, phase=0.5
+        )
+
+        forces = nematic.forces
+        if forces is not None:
+            total_f = np.sum(forces, axis=0)
+            np.testing.assert_allclose(total_f, [0, 0, 0], atol=1e-10)
+
+        torques = nematic.torques
+        if torques is not None:
+            total_t = np.sum(torques, axis=0)
+            np.testing.assert_allclose(total_t, [0, 0, 0], atol=1e-10)
+
+    def test_force_finite_difference_with_phase(self, device):
+        """Numerical gradient check with phase != 0."""
+        epsilon = 5.0
+        r_cut = 3.5
+        h = 1e-5
+
+        r_base = np.array([1.2, 0.7, 0.4])
+        theta = np.pi / 3
+        c = np.cos(theta / 2)
+        s = np.sin(theta / 2)
+        qj = [c, 0, s, 0]
+
+        snap0 = make_pair_snapshot(
+            device,
+            pos_i=[0, 0, 0],
+            pos_j=r_base.tolist(),
+            quat_i=[1, 0, 0, 0],
+            quat_j=qj,
+        )
+        sim0, nematic0 = make_sim_with_nematic(
+            device, snap0, epsilon, r_cut, multiplicity=2, phase=0.3
+        )
+
+        forces = nematic0.forces
+        if forces is None:
+            return
+
+        force_on_j = np.array(forces[1])
+
+        grad = np.zeros(3)
+        for dim in range(3):
+            for sign, coeff in [(+1, +1), (-1, -1)]:
+                r_shift = r_base.copy()
+                r_shift[dim] += sign * h
+                snap_s = make_pair_snapshot(
+                    device,
+                    pos_i=[0, 0, 0],
+                    pos_j=r_shift.tolist(),
+                    quat_i=[1, 0, 0, 0],
+                    quat_j=qj,
+                )
+                sim_s, nematic_s = make_sim_with_nematic(
+                    device, snap_s, epsilon, r_cut, multiplicity=2, phase=0.3
                 )
                 energies_s = nematic_s.energies
                 if energies_s is not None:

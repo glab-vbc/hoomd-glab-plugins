@@ -2,21 +2,19 @@
 // Released under the BSD 3-Clause License.
 
 /*! \file EvaluatorPairNematic.h
-    \brief Defines the nematic pair potential evaluator.
+    \brief Defines the director pair potential evaluator.
 
-    Potential (power p = 1 or 2):
-        U = -epsilon * (n_i . n_j)^p * (1 - r^2/r_c^2)^2
+    Generalized potential:
+        U = -epsilon * cos(m * alpha + phase) * (1 - r^2/r_c^2)^2
 
-    where n_i = rotate(q_i, x_hat), n_j = rotate(q_j, x_hat) are the
-    body-frame x-axes of the two particles, and the smooth compact envelope
-    g(r) = (1 - r^2/r_c^2)^2 ensures both force and energy vanish continuously
-    at the cutoff r_c.
+    where alpha = arccos(n_i . n_j) is the angle between the body-frame
+    x-axes of the two particles, m is the multiplicity, and the smooth
+    compact envelope g(r) = (1 - r^2/r_c^2)^2 ensures both force and
+    energy vanish continuously at the cutoff r_c.
 
-    When p = 2 (default), the potential has nematic symmetry: it is minimized
-    for parallel OR anti-parallel orientations.
-
-    When p = 1, the potential has polar symmetry: it is minimized only for
-    parallel orientations and is repulsive for anti-parallel ones.
+    With m = 1, phase = 0 (default): polar mode, only parallel is favoured.
+    With m = 2, phase = 0: nematic mode, parallel and anti-parallel are
+    equally favourable.
 */
 
 #ifndef __EVALUATOR_PAIR_NEMATIC_H__
@@ -49,11 +47,12 @@ namespace md
 class EvaluatorPairNematic
     {
     public:
-    //! Per-type-pair parameters: epsilon and power
+    //! Per-type-pair parameters: epsilon, multiplicity, and phase
     struct param_type
         {
         Scalar epsilon;
-        unsigned int power;  // 1 = linear (polar), 2 = squared (nematic)
+        unsigned int multiplicity;  // angular harmonic number m (default 1)
+        Scalar phase;               // phase offset in radians (default 0)
 
 #ifdef ENABLE_HIP
         void set_memory_hint() const { }
@@ -62,20 +61,24 @@ class EvaluatorPairNematic
         DEVICE void load_shared(char*& ptr, unsigned int& available_bytes) { }
         HOSTDEVICE void allocate_shared(char*& ptr, unsigned int& available_bytes) const { }
 
-        HOSTDEVICE param_type() : epsilon(0), power(2) { }
+        HOSTDEVICE param_type() : epsilon(0), multiplicity(1), phase(0) { }
 
 #ifndef __HIPCC__
         param_type(pybind11::dict v, bool managed)
             {
             epsilon = v["epsilon"].cast<Scalar>();
-            power = v["power"].cast<unsigned int>();
+            multiplicity = v.contains("multiplicity")
+                ? v["multiplicity"].cast<unsigned int>() : 1;
+            phase = v.contains("phase")
+                ? v["phase"].cast<Scalar>() : Scalar(0);
             }
 
         pybind11::object toPython()
             {
             pybind11::dict v;
             v["epsilon"] = epsilon;
-            v["power"] = power;
+            v["multiplicity"] = multiplicity;
+            v["phase"] = phase;
             return v;
             }
 #endif
@@ -120,7 +123,8 @@ class EvaluatorPairNematic
                                     const Scalar _rcutsq,
                                     const param_type& _params)
         : dr(_dr), quat_i(_quat_i), quat_j(_quat_j), rcutsq(_rcutsq),
-          epsilon(_params.epsilon), power(_params.power)
+          epsilon(_params.epsilon), multiplicity(_params.multiplicity),
+          phase(_params.phase)
         {
         }
 
@@ -172,52 +176,47 @@ class EvaluatorPairNematic
         vec3<Scalar> n_i = rotate(quat<Scalar>(quat_i), e_x);
         vec3<Scalar> n_j = rotate(quat<Scalar>(quat_j), e_x);
 
-        // c = n_i . n_j
+        // c = n_i . n_j = cos(alpha)
         Scalar c = dot(n_i, n_j);
+        if (c > Scalar(1.0))
+            c = Scalar(1.0);
+        if (c < Scalar(-1.0))
+            c = Scalar(-1.0);
 
         // Smooth compact envelope: x = 1 - r^2/r_c^2,  g = x^2
         Scalar x = Scalar(1.0) - rsq / rcutsq;
         Scalar g = x * x;
 
-        // Cross product needed for torques in both modes
-        vec3<Scalar> ni_cross_nj = cross(n_i, n_j);
+        // Generalized potential: U = -epsilon * cos(m * alpha + phase) * g(r)
+        Scalar alpha = acos(c);
+        Scalar m_alpha_phase = Scalar(multiplicity) * alpha + phase;
+        Scalar cos_mp = cos(m_alpha_phase);
+        Scalar sin_mp = sin(m_alpha_phase);
 
-        Scalar f_mag;
-        Scalar t_prefactor;
+        // Energy
+        pair_eng = -epsilon * cos_mp * g;
 
-        if (power == 1)
-            {
-            // Linear (polar) mode: U = -epsilon * c * g
-            pair_eng = -epsilon * c * g;
-
-            // Force: dU/dr_vec = -epsilon * c * dg/dr_vec
-            //   dg/dr_vec = -4*x / r_c^2 * dr
-            //   F_i = -dU/dr_i = epsilon * c * (-4*x/r_c^2) * dr
-            f_mag = -Scalar(4.0) * epsilon * c * x / rcutsq;
-
-            // Torque: dU/dc = -epsilon * g
-            //   dU/dn_i = -epsilon * g * n_j
-            //   torque_i = cross(dU/dn_i, n_i) = -epsilon*g * cross(n_j, n_i)
-            //            = epsilon*g * cross(n_i, n_j)
-            t_prefactor = epsilon * g;
-            }
-        else
-            {
-            // Squared (nematic) mode: U = -epsilon * c^2 * g
-            Scalar c2 = c * c;
-            pair_eng = -epsilon * c2 * g;
-
-            // Force: F_i = -dU/dr_i = epsilon * c^2 * (-4*x/r_c^2) * dr
-            f_mag = -Scalar(4.0) * epsilon * c2 * x / rcutsq;
-
-            // Torque: dU/dc = -2*epsilon*c*g
-            //   torque_i = 2*epsilon*c*g * cross(n_i, n_j)
-            t_prefactor = Scalar(2.0) * epsilon * c * g;
-            }
+        // Radial force: F_i = -dU/dr_i
+        //   dU/dr_vec = -epsilon * cos_mp * dg/dr_vec
+        //   dg/dr_vec = -4*x/rcutsq * dr   (dr = r_i - r_j)
+        Scalar f_mag = -Scalar(4.0) * epsilon * cos_mp * x / rcutsq;
 
         force.x = f_mag * dr.x;
         force.y = f_mag * dr.y;
         force.z = f_mag * dr.z;
+
+        // Orientational torque:
+        //   tau_i = epsilon * m * sin(m*alpha + phase) / sin(alpha) * g * cross(n_i, n_j)
+        // Guard for sin(alpha) -> 0 (parallel or anti-parallel):
+        // cross(n_i, n_j) is also ~0, so the product remains finite,
+        // but numerically we set the prefactor to 0 to avoid 0/0.
+        vec3<Scalar> ni_cross_nj = cross(n_i, n_j);
+        Scalar sin_alpha = sqrt(Scalar(1.0) - c * c);
+        Scalar t_prefactor;
+        if (sin_alpha > Scalar(1e-8))
+            t_prefactor = epsilon * Scalar(multiplicity) * sin_mp / sin_alpha * g;
+        else
+            t_prefactor = Scalar(0.0);
 
         torque_i.x = t_prefactor * ni_cross_nj.x;
         torque_i.y = t_prefactor * ni_cross_nj.y;
@@ -262,7 +261,8 @@ class EvaluatorPairNematic
     Scalar4 quat_i, quat_j;
     Scalar rcutsq;
     Scalar epsilon;
-    unsigned int power;
+    unsigned int multiplicity;
+    Scalar phase;
     };
 
     } // end namespace md
