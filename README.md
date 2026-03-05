@@ -1,5 +1,8 @@
 # hoomd-align-angle
 
+> **Note:** This README was generated with the assistance of AI (GitHub Copilot)
+> and may contain inaccuracies. Please verify the formulas against the source code.
+
 A [HOOMD-blue](https://hoomd-blue.readthedocs.io/) plugin providing two
 orientation-dependent forces for anisotropic particles:
 
@@ -54,7 +57,11 @@ integrator.integrate_rotational_dof = True  # required!
 An orientation-dependent pair potential between particles within a cutoff
 distance $r_c$:
 
-$$U_{ij} = -\varepsilon \, \cos(m\,\alpha + \varphi_0) \; g(r), \qquad g(r) = \left(1 - \frac{r^2}{r_c^2}\right)^2$$
+$$U_{ij} = -\varepsilon \, \cos(m\,\alpha + \varphi_0) \; g(r)$$
+
+with the smooth compact envelope
+
+$$g(r) = \left(1 - \frac{r^2}{r_c^2}\right)^2$$
 
 where $\alpha = \arccos(\hat{n}_i \cdot \hat{n}_j)$ is the angle between the
 particle directors, $\hat{n} = \mathrm{rotate}(q, \hat{x})$ is each particle's
