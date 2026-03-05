@@ -23,7 +23,7 @@ class Align(Angle):
         None
 
     `Align` computes an angular potential that aligns the body-frame x-axis of
-    particle *j* with the direction from particle *i* to particle *k*.
+    particle *i* with the direction from particle *j* to particle *k*.
 
     For each angle :math:`(i, j, k)`:
 
@@ -31,26 +31,26 @@ class Align(Angle):
 
         U = \frac{k}{2} \left(1 - \hat{n} \cdot \hat{d}\right)
 
-    where :math:`\hat{d} = (\mathbf{r}_k - \mathbf{r}_i) / |\mathbf{r}_k -
-    \mathbf{r}_i|` is the unit direction from *i* to *k*, and :math:`\hat{n} =
-    \mathrm{rotate}(q_j, \hat{x})` is the body-frame x-axis of particle *j*
-    rotated into the lab frame by its orientation quaternion :math:`q_j`.
+    where :math:`\hat{d} = (\mathbf{r}_k - \mathbf{r}_j) / |\mathbf{r}_k -
+    \mathbf{r}_j|` is the unit direction from *j* to *k*, and :math:`\hat{n} =
+    \mathrm{rotate}(q_i, \hat{x})` is the body-frame x-axis of particle *i*
+    rotated into the lab frame by its orientation quaternion :math:`q_i`.
 
-    The force on particle *i* is:
+    The force on particle *j* is:
 
     .. math::
 
-        \mathbf{F}_i = -\frac{k}{2 |\mathbf{d}|}\left(\hat{n} - (\hat{n} \cdot
+        \mathbf{F}_j = -\frac{k}{2 |\mathbf{d}|}\left(\hat{n} - (\hat{n} \cdot
         \hat{d})\hat{d}\right)
 
-    The force on particle *k* is :math:`\mathbf{F}_k = -\mathbf{F}_i` (Newton's
-    third law).  There is no translational force on particle *j*.
+    The force on particle *k* is :math:`\mathbf{F}_k = -\mathbf{F}_j` (Newton's
+    third law).  There is no translational force on particle *i*.
 
-    The torque on particle *j* (in the lab frame) is:
+    The torque on particle *i* (in the lab frame) is:
 
     .. math::
 
-        \boldsymbol{\tau}_j = \frac{k}{2}\left(\hat{n} \times \hat{d}\right)
+        \boldsymbol{\tau}_i = \frac{k}{2}\left(\hat{n} \times \hat{d}\right)
 
     Example::
 

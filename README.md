@@ -17,20 +17,20 @@ Both forces run on **CPU and GPU** (HIP/CUDA).
 ### Physics
 
 For an angle group `(i, j, k)`:
-- Particles `i` and `k` are **guide** particles that define a target direction
-  `d̂ = (r_k − r_i) / |r_k − r_i|`.
-- Particle `j` is the **oriented** particle whose body-frame x-axis `n̂ = rotate(q_j, x̂)`
-  should align with `d̂`.
+- Particle `i` is the **oriented** particle whose body-frame x-axis `n̂ = rotate(q_i, x̂)`
+  should align with the target direction.
+- Particles `j` and `k` are **guide** particles that define the target direction
+  `d̂ = (r_k − r_j) / |r_k − r_j|`.
 
 The potential energy is:
 
 $$U = \frac{K}{2}(1 - \cos\theta), \quad \cos\theta = \hat{n} \cdot \hat{d}$$
 
 Forces and torques:
-- **Torque on j** (lab frame): $\tau_j = \frac{K}{2}\,\hat{n} \times \hat{d}$
-- **Force on i**: $F_i = -\frac{K}{2|d|}\left(\hat{n} - \cos\theta\,\hat{d}\right)$
-- **Force on k**: $F_k = -F_i$ (Newton's 3rd law)
-- **No force on j** (potential couples only to j's orientation)
+- **Torque on i** (lab frame): $\tau_i = \frac{K}{2}\,\hat{n} \times \hat{d}$
+- **Force on j**: $F_j = -\frac{K}{2|d|}\left(\hat{n} - \cos\theta\,\hat{d}\right)$
+- **Force on k**: $F_k = -F_j$ (Newton's 3rd law)
+- **No force on i** (potential couples only to i's orientation)
 
 ### Usage
 

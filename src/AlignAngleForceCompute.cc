@@ -15,20 +15,20 @@ using namespace std;
 
     Physics:
     For angle group (i, j, k):
-      d = minImage(r_k - r_i),  d_hat = d / |d|
-      n_hat = rotate(q_j, (1,0,0))   [body-frame x-axis of particle j]
+      d = minImage(r_k - r_j),  d_hat = d / |d|
+      n_hat = rotate(q_i, (1,0,0))   [body-frame x-axis of particle i]
       cos_theta = dot(n_hat, d_hat)
 
       U = (k/2) * (1 - cos_theta)
 
-    Torque on j (in lab frame):
-      tau_j = (k/2) * cross(n_hat, d_hat)
+    Torque on i (in lab frame):
+      tau_i = (k/2) * cross(n_hat, d_hat)
 
-    Forces on i and k (from dependence of d_hat on positions):
+    Forces on j and k (from dependence of d_hat on positions):
       Let P = (I - d_hat ⊗ d_hat) / |d|   [projector ⊥ d_hat, scaled by 1/|d|]
-      F_i = -(k/2) * P . n_hat = -(k/2)/|d| * (n_hat - cos_theta * d_hat)
-      F_k = -F_i
-      (No force on j from this potential — it only couples to j's orientation.)
+      F_j = -(k/2) * P . n_hat = -(k/2)/|d| * (n_hat - cos_theta * d_hat)
+      F_k = -F_j
+      (No force on i from this potential — it only couples to i's orientation.)
 */
 
 namespace hoomd
@@ -146,14 +146,14 @@ void AlignAngleForceCompute::computeForces(uint64_t timestep)
         assert(idx_k < m_pdata->getN() + m_pdata->getNGhosts());
 
         // Get positions
-        Scalar3 pos_i = make_scalar3(h_pos.data[idx_i].x, h_pos.data[idx_i].y, h_pos.data[idx_i].z);
+        Scalar3 pos_j = make_scalar3(h_pos.data[idx_j].x, h_pos.data[idx_j].y, h_pos.data[idx_j].z);
         Scalar3 pos_k = make_scalar3(h_pos.data[idx_k].x, h_pos.data[idx_k].y, h_pos.data[idx_k].z);
 
-        // Direction vector d = r_k - r_i  (with minimum image)
+        // Direction vector d = r_k - r_j  (with minimum image)
         Scalar3 d;
-        d.x = pos_k.x - pos_i.x;
-        d.y = pos_k.y - pos_i.y;
-        d.z = pos_k.z - pos_i.z;
+        d.x = pos_k.x - pos_j.x;
+        d.y = pos_k.y - pos_j.y;
+        d.z = pos_k.z - pos_j.z;
         d = box.minImage(d);
 
         Scalar d_sq = d.x * d.x + d.y * d.y + d.z * d.z;
@@ -166,11 +166,11 @@ void AlignAngleForceCompute::computeForces(uint64_t timestep)
         Scalar d_inv = Scalar(1.0) / d_mag;
         vec3<Scalar> d_hat(d.x * d_inv, d.y * d_inv, d.z * d_inv);
 
-        // Get orientation of particle j
-        quat<Scalar> q_j(h_orientation.data[idx_j]);
+        // Get orientation of particle i (the oriented particle)
+        quat<Scalar> q_i(h_orientation.data[idx_i]);
 
         // Compute body-frame x-axis in lab frame
-        vec3<Scalar> n_hat = rotate(q_j, e_x);
+        vec3<Scalar> n_hat = rotate(q_i, e_x);
 
         // cos(theta) = n_hat . d_hat
         Scalar cos_theta = dot(n_hat, d_hat);
@@ -190,45 +190,45 @@ void AlignAngleForceCompute::computeForces(uint64_t timestep)
         Scalar energy = Scalar(0.5) * K * (Scalar(1.0) - cos_theta);
         Scalar energy_third = energy / Scalar(3.0);
 
-        // Torque on j (lab frame): tau_j = (K/2) * cross(n_hat, d_hat)
-        vec3<Scalar> tau_j = Scalar(0.5) * K * cross(n_hat, d_hat);
+        // Torque on i (lab frame): tau_i = (K/2) * cross(n_hat, d_hat)
+        vec3<Scalar> tau_i = Scalar(0.5) * K * cross(n_hat, d_hat);
 
-        // Force on i: F_i = -(K/2) / |d| * (n_hat - cos_theta * d_hat)
-        // This is -dU/dr_i where U depends on r_i through d_hat
+        // Force on j: F_j = -(K/2) / |d| * (n_hat - cos_theta * d_hat)
+        // This is -dU/dr_j where U depends on r_j through d_hat
         vec3<Scalar> n_perp = n_hat - cos_theta * d_hat;
-        vec3<Scalar> F_i = Scalar(-0.5) * K * d_inv * n_perp;
-        vec3<Scalar> F_k = -F_i; // Newton's 3rd law: F_k = -F_i
+        vec3<Scalar> F_j = Scalar(-0.5) * K * d_inv * n_perp;
+        vec3<Scalar> F_k = -F_j; // Newton's 3rd law: F_k = -F_j
 
         // Virial: W_ij = (1/2) * sum_pairs F_pair^a * dr_pair^b
-        // The pair interaction is between i and k via displacement d
+        // The pair interaction is between j and k via displacement d
         // We split 1/3 of the virial to each of the 3 particles
-        // virial = F_i^a * d^b  (since d = r_k - r_i and F_k = -F_i)
+        // virial = F_j^a * d^b  (since d = r_k - r_j and F_k = -F_j)
         Scalar virial[6];
-        virial[0] = Scalar(1. / 3.) * F_i.x * d.x; // xx
-        virial[1] = Scalar(1. / 3.) * Scalar(0.5) * (F_i.y * d.x + F_i.x * d.y); // xy
-        virial[2] = Scalar(1. / 3.) * Scalar(0.5) * (F_i.z * d.x + F_i.x * d.z); // xz
-        virial[3] = Scalar(1. / 3.) * F_i.y * d.y; // yy
-        virial[4] = Scalar(1. / 3.) * Scalar(0.5) * (F_i.z * d.y + F_i.y * d.z); // yz
-        virial[5] = Scalar(1. / 3.) * F_i.z * d.z; // zz
+        virial[0] = Scalar(1. / 3.) * F_j.x * d.x; // xx
+        virial[1] = Scalar(1. / 3.) * Scalar(0.5) * (F_j.y * d.x + F_j.x * d.y); // xy
+        virial[2] = Scalar(1. / 3.) * Scalar(0.5) * (F_j.z * d.x + F_j.x * d.z); // xz
+        virial[3] = Scalar(1. / 3.) * F_j.y * d.y; // yy
+        virial[4] = Scalar(1. / 3.) * Scalar(0.5) * (F_j.z * d.y + F_j.y * d.z); // yz
+        virial[5] = Scalar(1. / 3.) * F_j.z * d.z; // zz
 
         // Accumulate: only for local (non-ghost) particles
         if (idx_i < m_pdata->getN())
             {
-            h_force.data[idx_i].x += F_i.x;
-            h_force.data[idx_i].y += F_i.y;
-            h_force.data[idx_i].z += F_i.z;
+            // No force on i (the oriented particle), only torque and energy
             h_force.data[idx_i].w += energy_third;
+            h_torque.data[idx_i].x += tau_i.x;
+            h_torque.data[idx_i].y += tau_i.y;
+            h_torque.data[idx_i].z += tau_i.z;
             for (int v = 0; v < 6; v++)
                 h_virial.data[v * virial_pitch + idx_i] += virial[v];
             }
 
         if (idx_j < m_pdata->getN())
             {
-            // No force on j, only torque and energy
+            h_force.data[idx_j].x += F_j.x;
+            h_force.data[idx_j].y += F_j.y;
+            h_force.data[idx_j].z += F_j.z;
             h_force.data[idx_j].w += energy_third;
-            h_torque.data[idx_j].x += tau_j.x;
-            h_torque.data[idx_j].y += tau_j.y;
-            h_torque.data[idx_j].z += tau_j.z;
             for (int v = 0; v < 6; v++)
                 h_virial.data[v * virial_pitch + idx_j] += virial[v];
             }

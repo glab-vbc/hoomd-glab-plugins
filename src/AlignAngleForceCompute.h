@@ -14,11 +14,11 @@
     \brief Declares a class for computing orientation-alignment angle forces.
 
     Uses HOOMD angle topology (i, j, k) where:
-      - j is the oriented particle (has a quaternion orientation)
-      - i, k are guide particles defining a target direction d_hat = (r_k - r_i) / |r_k - r_i|
-    The potential aligns j's body-frame x-axis with d_hat:
+      - i is the oriented particle (has a quaternion orientation)
+      - j, k are guide particles defining a target direction d_hat = (r_k - r_j) / |r_k - r_j|
+    The potential aligns i's body-frame x-axis with d_hat:
       U = (k/2) * (1 - n_hat . d_hat)
-    where n_hat = rotate(q_j, (1,0,0))
+    where n_hat = rotate(q_i, (1,0,0))
 */
 
 #ifdef __HIPCC__
