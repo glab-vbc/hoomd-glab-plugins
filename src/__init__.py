@@ -22,35 +22,31 @@ class DirectorAlign(Angle):
     Args:
         None
 
-    `DirectorAlign` computes an angular potential that aligns the body-frame x-axis of
-    particle *i* with the direction from particle *j* to particle *k*.
+    `DirectorAlign` computes an angular potential that aligns the body-frame
+    x-axis of particle *i* with the direction from particle *j* to particle *k*.
 
     For each angle :math:`(i, j, k)`:
 
     .. math::
 
-        U = \frac{k}{2} \left(1 - \hat{n} \cdot \hat{d}\right)
+        U = \frac{k}{2}
+            \left(1 - \cos\!\bigl(m\,\theta + \varphi_0\bigr)\right)
 
-    where :math:`\hat{d} = (\mathbf{r}_k - \mathbf{r}_j) / |\mathbf{r}_k -
-    \mathbf{r}_j|` is the unit direction from *j* to *k*, and :math:`\hat{n} =
-    \mathrm{rotate}(q_i, \hat{x})` is the body-frame x-axis of particle *i*
-    rotated into the lab frame by its orientation quaternion :math:`q_i`.
+    where :math:`\theta = \arccos(\hat{n} \cdot \hat{d})` is the angle between
+    the director and the target direction,
+    :math:`\hat{d} = (\mathbf{r}_k - \mathbf{r}_j) / |\mathbf{r}_k -
+    \mathbf{r}_j|`, :math:`\hat{n} = \mathrm{rotate}(q_i, \hat{x})`,
+    :math:`m` is the ``multiplicity``, and :math:`\varphi_0` is the ``phase``.
 
-    The force on particle *j* is:
+    With ``multiplicity=1, phase=0`` (the defaults) this reduces to
+    :math:`U = \frac{k}{2}(1 - \hat{n}\cdot\hat{d})`, aligning the director
+    parallel to the target direction.
 
-    .. math::
+    Useful presets:
 
-        \mathbf{F}_j = -\frac{k}{2 |\mathbf{d}|}\left(\hat{n} - (\hat{n} \cdot
-        \hat{d})\hat{d}\right)
-
-    The force on particle *k* is :math:`\mathbf{F}_k = -\mathbf{F}_j` (Newton's
-    third law).  There is no translational force on particle *i*.
-
-    The torque on particle *i* (in the lab frame) is:
-
-    .. math::
-
-        \boldsymbol{\tau}_i = \frac{k}{2}\left(\hat{n} \times \hat{d}\right)
+    * ``multiplicity=2, phase=0`` — nematic alignment (:math:`\hat{n}` or
+      :math:`-\hat{n}` both minimise the energy).
+    * ``multiplicity=1, phase=pi`` — anti-parallel alignment.
 
     Example::
 
@@ -58,13 +54,20 @@ class DirectorAlign(Angle):
         align.params["polymer"] = dict(k=10.0)
         sim.operations.integrator.forces.append(align)
 
+        # Nematic (head-tail symmetric) alignment:
+        align.params["polymer"] = dict(k=10.0, multiplicity=2)
+
     Attributes:
         params (TypeParameter[``angle type``, dict]):
             The parameter of the align potential for each angle type.
-            The dictionary has the following key:
+            The dictionary has the following keys:
 
             * ``k`` (`float`, **required**) - spring constant
               :math:`[\mathrm{energy}]`
+            * ``multiplicity`` (`int`, **optional**, default 1) - angular
+              multiplicity :math:`m`
+            * ``phase`` (`float`, **optional**, default 0) - phase offset
+              :math:`\varphi_0` in radians
     """
 
     _cpp_class_name = "AlignAngleForceCompute"
@@ -75,7 +78,7 @@ class DirectorAlign(Angle):
         params = TypeParameter(
             "params",
             "angle_types",
-            TypeParameterDict(k=float, len_keys=1),
+            TypeParameterDict(k=float, multiplicity=1, phase=0.0, len_keys=1),
         )
         self._add_typeparam(params)
 

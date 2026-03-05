@@ -15,9 +15,11 @@
       d = minImage(r_k - r_j),  d_hat = d / |d|
       n_hat = rotate(q_i, (1,0,0))
       cos_theta = dot(n_hat, d_hat)
-      U = (K/2) * (1 - cos_theta)
-      tau_i = (K/2) * cross(n_hat, d_hat)
-      F_j = -(K/2)/|d| * (n_hat - cos_theta*d_hat),  F_k = -F_j
+      theta = acos(cos_theta)
+      U = (K/2) * (1 - cos(m*theta + phase))
+      f = m * sin(m*theta + phase) / sin(theta)
+      tau_i = (K/2) * f * cross(n_hat, d_hat)
+      F_j = -(K/2) * f / |d| * (n_hat - cos_theta*d_hat),  F_k = -F_j
 
     GPU parallelization: one thread per particle. Each thread loops over all
     angles it participates in and accumulates its own force/torque.
@@ -43,7 +45,7 @@ __global__ void gpu_compute_align_angle_forces_kernel(Scalar4* d_force,
                                                       const unsigned int* apos_list,
                                                       const unsigned int pitch,
                                                       const unsigned int* n_angles_list,
-                                                      const Scalar* d_params)
+                                                      const Scalar4* d_params)
     {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -141,20 +143,37 @@ __global__ void gpu_compute_align_angle_forces_kernel(Scalar4* d_force,
         if (cos_theta < Scalar(-1.0))
             cos_theta = Scalar(-1.0);
 
-        // Get parameter
-        Scalar K = __ldg(d_params + cur_angle_type);
+        // Get parameters (packed as Scalar4: K, multiplicity, phase, 0)
+        Scalar4 params4 = d_params[cur_angle_type];
+        Scalar K = params4.x;
+        Scalar mult = params4.y;
+        Scalar phase = params4.z;
 
-        // Energy: U = (K/2)(1 - cos_theta), split 1/3 per particle
-        Scalar energy_third = K * (Scalar(1.0) - cos_theta) / Scalar(6.0);
+        // Compute theta and the generalized cosine
+        Scalar sin_theta = sqrtf(Scalar(1.0) - cos_theta * cos_theta);
+        Scalar theta = acosf(cos_theta);
+        Scalar m_theta_phase = mult * theta + phase;
+        Scalar cos_mp = cosf(m_theta_phase);
+        Scalar sin_mp = sinf(m_theta_phase);
+
+        // Energy: U = (K/2)(1 - cos(m*theta + phase)), split 1/3 per particle
+        Scalar energy_third = K * (Scalar(1.0) - cos_mp) / Scalar(6.0);
+
+        // Factor: f = m * sin(m*theta + phase) / sin(theta)
+        Scalar f;
+        if (sin_theta > Scalar(1e-8))
+            f = mult * sin_mp / sin_theta;
+        else
+            f = Scalar(0.0);
 
         // Forces:
-        // F_j = -(K/2)/|d| * (n_hat - cos_theta * d_hat)
+        // F_j = -(K/2) * f / |d| * (n_hat - cos_theta * d_hat)
         // F_k = -F_j
         vec3<Scalar> n_perp = n_hat - cos_theta * d_hat;
-        vec3<Scalar> F_j = Scalar(-0.5) * K * d_inv * n_perp;
+        vec3<Scalar> F_j = Scalar(-0.5) * K * f * d_inv * n_perp;
 
-        // Torque on i: tau_i = (K/2) * cross(n_hat, d_hat)
-        vec3<Scalar> tau_i = Scalar(0.5) * K * cross(n_hat, d_hat);
+        // Torque on i: tau_i = (K/2) * f * cross(n_hat, d_hat)
+        vec3<Scalar> tau_i = Scalar(0.5) * K * f * cross(n_hat, d_hat);
 
         // Virial: 1/3 of (F_j^a * d^b)
         Scalar angle_virial[6];
@@ -213,7 +232,7 @@ hipError_t gpu_compute_align_angle_forces(Scalar4* d_force,
                                           const unsigned int* apos_list,
                                           const unsigned int pitch,
                                           const unsigned int* n_angles_list,
-                                          const Scalar* d_params,
+                                          const Scalar4* d_params,
                                           unsigned int n_angle_types,
                                           int block_size)
     {

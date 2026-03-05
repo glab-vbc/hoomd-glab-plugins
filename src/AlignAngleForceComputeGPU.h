@@ -26,7 +26,7 @@ namespace md
 /*! AlignAngleForceComputeGPU implements the same calculations as AlignAngleForceCompute,
     but executing on the GPU.
 
-    Per-type parameters are stored in a GPUArray of Scalar values (just K).
+    Per-type parameters are stored in a GPUArray of Scalar4 values (K, multiplicity, phase, 0).
 
     \ingroup computes
 */
@@ -39,11 +39,11 @@ class PYBIND11_EXPORT AlignAngleForceComputeGPU : public AlignAngleForceCompute
     ~AlignAngleForceComputeGPU();
 
     //! Set the parameters
-    virtual void setParams(unsigned int type, Scalar K);
+    virtual void setParams(unsigned int type, Scalar K, unsigned int multiplicity, Scalar phase);
 
     protected:
     std::shared_ptr<Autotuner<1>> m_tuner; //!< Autotuner for block size
-    GPUArray<Scalar> m_params_gpu;         //!< Parameters stored on the GPU (just K per type)
+    GPUArray<Scalar4> m_params_gpu;        //!< Parameters on GPU (K, multiplicity, phase, 0)
 
     //! Actually compute the forces
     virtual void computeForces(uint64_t timestep);

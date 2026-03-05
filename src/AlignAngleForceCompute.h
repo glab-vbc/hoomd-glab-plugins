@@ -17,8 +17,9 @@
       - i is the oriented particle (has a quaternion orientation)
       - j, k are guide particles defining a target direction d_hat = (r_k - r_j) / |r_k - r_j|
     The potential aligns i's body-frame x-axis with d_hat:
-      U = (k/2) * (1 - n_hat . d_hat)
-    where n_hat = rotate(q_i, (1,0,0))
+      U = (k/2) * (1 - cos(m*theta + phase))
+    where theta = acos(n_hat . d_hat), n_hat = rotate(q_i, (1,0,0)),
+    m = multiplicity (default 1), phase = phase offset (default 0).
 */
 
 #ifdef __HIPCC__
@@ -35,17 +36,25 @@ namespace md
 //! Parameters for the align angle potential
 struct align_angle_params
     {
-    Scalar k; //!< Spring constant
+    Scalar k;                  //!< Spring constant
+    unsigned int multiplicity; //!< Angular multiplicity (default 1)
+    Scalar phase;              //!< Phase offset in radians (default 0)
 
 #ifndef __HIPCC__
-    align_angle_params() : k(0) { }
+    align_angle_params() : k(0), multiplicity(1), phase(0) { }
 
-    align_angle_params(pybind11::dict params) : k(params["k"].cast<Scalar>()) { }
+    align_angle_params(pybind11::dict params)
+        : k(params["k"].cast<Scalar>()),
+          multiplicity(params.contains("multiplicity") ? params["multiplicity"].cast<unsigned int>() : 1),
+          phase(params.contains("phase") ? params["phase"].cast<Scalar>() : Scalar(0))
+        { }
 
     pybind11::dict asDict()
         {
         pybind11::dict v;
         v["k"] = k;
+        v["multiplicity"] = multiplicity;
+        v["phase"] = phase;
         return v;
         }
 #endif
@@ -72,7 +81,7 @@ class PYBIND11_EXPORT AlignAngleForceCompute : public ForceCompute
     virtual ~AlignAngleForceCompute();
 
     //! Set the parameters
-    virtual void setParams(unsigned int type, Scalar K);
+    virtual void setParams(unsigned int type, Scalar K, unsigned int multiplicity, Scalar phase);
 
     virtual void setParamsPython(std::string type, pybind11::dict params);
 
@@ -92,7 +101,9 @@ class PYBIND11_EXPORT AlignAngleForceCompute : public ForceCompute
 #endif
 
     protected:
-    Scalar* m_K; //!< K parameter for multiple angle types
+    Scalar* m_K;                  //!< K parameter for multiple angle types
+    unsigned int* m_multiplicity; //!< Multiplicity for multiple angle types
+    Scalar* m_phase;              //!< Phase offset for multiple angle types
 
     std::shared_ptr<AngleData> m_angle_data; //!< Angle data to use in computing angles
 

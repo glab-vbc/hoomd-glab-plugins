@@ -25,8 +25,8 @@ AlignAngleForceComputeGPU::AlignAngleForceComputeGPU(std::shared_ptr<SystemDefin
         throw std::runtime_error("Error initializing AlignAngleForceComputeGPU");
         }
 
-    // Allocate and zero device memory for per-type parameters
-    GPUArray<Scalar> params(m_angle_data->getNTypes(), m_exec_conf);
+    // Allocate and zero device memory for per-type parameters (Scalar4: K, m, phase, 0)
+    GPUArray<Scalar4> params(m_angle_data->getNTypes(), m_exec_conf);
     m_params_gpu.swap(params);
 
     m_tuner.reset(new Autotuner<1>({AutotunerBase::makeBlockSizeRange(m_exec_conf)},
@@ -37,12 +37,12 @@ AlignAngleForceComputeGPU::AlignAngleForceComputeGPU(std::shared_ptr<SystemDefin
 
 AlignAngleForceComputeGPU::~AlignAngleForceComputeGPU() { }
 
-void AlignAngleForceComputeGPU::setParams(unsigned int type, Scalar K)
+void AlignAngleForceComputeGPU::setParams(unsigned int type, Scalar K, unsigned int multiplicity, Scalar phase)
     {
-    AlignAngleForceCompute::setParams(type, K);
+    AlignAngleForceCompute::setParams(type, K, multiplicity, phase);
 
-    ArrayHandle<Scalar> h_params(m_params_gpu, access_location::host, access_mode::readwrite);
-    h_params.data[type] = K;
+    ArrayHandle<Scalar4> h_params(m_params_gpu, access_location::host, access_mode::readwrite);
+    h_params.data[type] = make_scalar4(K, Scalar(multiplicity), phase, Scalar(0.0));
     }
 
 void AlignAngleForceComputeGPU::computeForces(uint64_t timestep)
@@ -57,7 +57,7 @@ void AlignAngleForceComputeGPU::computeForces(uint64_t timestep)
     ArrayHandle<Scalar4> d_force(m_force, access_location::device, access_mode::overwrite);
     ArrayHandle<Scalar4> d_torque(m_torque, access_location::device, access_mode::overwrite);
     ArrayHandle<Scalar> d_virial(m_virial, access_location::device, access_mode::overwrite);
-    ArrayHandle<Scalar> d_params(m_params_gpu, access_location::device, access_mode::read);
+    ArrayHandle<Scalar4> d_params(m_params_gpu, access_location::device, access_mode::read);
 
     ArrayHandle<AngleData::members_t> d_gpu_anglelist(m_angle_data->getGPUTable(),
                                                       access_location::device,

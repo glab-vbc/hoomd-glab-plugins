@@ -17,16 +17,20 @@ using namespace std;
     For angle group (i, j, k):
       d = minImage(r_k - r_j),  d_hat = d / |d|
       n_hat = rotate(q_i, (1,0,0))   [body-frame x-axis of particle i]
-      cos_theta = dot(n_hat, d_hat)
+      theta = acos(dot(n_hat, d_hat))
 
-      U = (k/2) * (1 - cos_theta)
+      U = (k/2) * (1 - cos(m*theta + phase))
+
+    where m = multiplicity (default 1), phase = phase offset (default 0).
+
+    The factor f = m * sin(m*theta + phase) / sin(theta) scales
+    the torque and force relative to the simple cos(theta) case.
 
     Torque on i (in lab frame):
-      tau_i = (k/2) * cross(n_hat, d_hat)
+      tau_i = (k/2) * f * cross(n_hat, d_hat)
 
     Forces on j and k (from dependence of d_hat on positions):
-      Let P = (I - d_hat ⊗ d_hat) / |d|   [projector ⊥ d_hat, scaled by 1/|d|]
-      F_j = -(k/2) * P . n_hat = -(k/2)/|d| * (n_hat - cos_theta * d_hat)
+      F_j = -(k/2) * f / |d| * (n_hat - cos_theta * d_hat)
       F_k = -F_j
       (No force on i from this potential — it only couples to i's orientation.)
 */
@@ -37,7 +41,7 @@ namespace md
     {
 
 AlignAngleForceCompute::AlignAngleForceCompute(std::shared_ptr<SystemDefinition> sysdef)
-    : ForceCompute(sysdef), m_K(NULL)
+    : ForceCompute(sysdef), m_K(NULL), m_multiplicity(NULL), m_phase(NULL)
     {
     m_exec_conf->msg->notice(5) << "Constructing AlignAngleForceCompute" << endl;
 
@@ -48,8 +52,16 @@ AlignAngleForceCompute::AlignAngleForceCompute(std::shared_ptr<SystemDefinition>
         throw runtime_error("No angle types in the system.");
         }
 
-    m_K = new Scalar[m_angle_data->getNTypes()];
-    memset(m_K, 0, sizeof(Scalar) * m_angle_data->getNTypes());
+    unsigned int n_types = m_angle_data->getNTypes();
+    m_K = new Scalar[n_types];
+    m_multiplicity = new unsigned int[n_types];
+    m_phase = new Scalar[n_types];
+    memset(m_K, 0, sizeof(Scalar) * n_types);
+    for (unsigned int t = 0; t < n_types; t++)
+        {
+        m_multiplicity[t] = 1;
+        m_phase[t] = Scalar(0.0);
+        }
     }
 
 AlignAngleForceCompute::~AlignAngleForceCompute()
@@ -57,15 +69,21 @@ AlignAngleForceCompute::~AlignAngleForceCompute()
     m_exec_conf->msg->notice(5) << "Destroying AlignAngleForceCompute" << endl;
     delete[] m_K;
     m_K = NULL;
+    delete[] m_multiplicity;
+    m_multiplicity = NULL;
+    delete[] m_phase;
+    m_phase = NULL;
     }
 
-void AlignAngleForceCompute::setParams(unsigned int type, Scalar K)
+void AlignAngleForceCompute::setParams(unsigned int type, Scalar K, unsigned int multiplicity, Scalar phase)
     {
     if (type >= m_angle_data->getNTypes())
         {
         throw runtime_error("Invalid angle type.");
         }
     m_K[type] = K;
+    m_multiplicity[type] = multiplicity;
+    m_phase[type] = phase;
 
     if (K <= 0)
         m_exec_conf->msg->warning() << "angle.align: specified K <= 0" << endl;
@@ -75,7 +93,7 @@ void AlignAngleForceCompute::setParamsPython(std::string type, pybind11::dict pa
     {
     auto typ = m_angle_data->getTypeByName(type);
     auto _params = align_angle_params(params);
-    setParams(typ, _params.k);
+    setParams(typ, _params.k, _params.multiplicity, _params.phase);
     }
 
 pybind11::dict AlignAngleForceCompute::getParams(std::string type)
@@ -87,6 +105,8 @@ pybind11::dict AlignAngleForceCompute::getParams(std::string type)
         }
     pybind11::dict params;
     params["k"] = m_K[typ];
+    params["multiplicity"] = m_multiplicity[typ];
+    params["phase"] = m_phase[typ];
     return params;
     }
 
@@ -184,19 +204,36 @@ void AlignAngleForceCompute::computeForces(uint64_t timestep)
         // Get parameters
         unsigned int angle_type = m_angle_data->getTypeByIndex(i);
         Scalar K = m_K[angle_type];
+        Scalar m = Scalar(m_multiplicity[angle_type]);
+        Scalar phase = m_phase[angle_type];
 
-        // Energy: U = (K/2) * (1 - cos_theta)
+        // Compute theta and the generalized cosine
+        Scalar sin_theta = sqrt(Scalar(1.0) - cos_theta * cos_theta);
+        Scalar theta = acos(cos_theta);
+        Scalar m_theta_phase = m * theta + phase;
+        Scalar cos_mp = cos(m_theta_phase);
+        Scalar sin_mp = sin(m_theta_phase);
+
+        // Energy: U = (K/2) * (1 - cos(m*theta + phase))
         // Split 1/3 to each particle
-        Scalar energy = Scalar(0.5) * K * (Scalar(1.0) - cos_theta);
+        Scalar energy = Scalar(0.5) * K * (Scalar(1.0) - cos_mp);
         Scalar energy_third = energy / Scalar(3.0);
 
-        // Torque on i (lab frame): tau_i = (K/2) * cross(n_hat, d_hat)
-        vec3<Scalar> tau_i = Scalar(0.5) * K * cross(n_hat, d_hat);
+        // Factor that scales torque and force relative to the simple cos(theta) case:
+        // f = m * sin(m*theta + phase) / sin(theta)
+        // When sin(theta) ~ 0, cross products and n_perp also vanish, keeping products finite.
+        Scalar f;
+        if (sin_theta > Scalar(1e-8))
+            f = m * sin_mp / sin_theta;
+        else
+            f = Scalar(0.0);
 
-        // Force on j: F_j = -(K/2) / |d| * (n_hat - cos_theta * d_hat)
-        // This is -dU/dr_j where U depends on r_j through d_hat
+        // Torque on i (lab frame): tau_i = (K/2) * f * cross(n_hat, d_hat)
+        vec3<Scalar> tau_i = Scalar(0.5) * K * f * cross(n_hat, d_hat);
+
+        // Force on j: F_j = -(K/2) * f / |d| * (n_hat - cos_theta * d_hat)
         vec3<Scalar> n_perp = n_hat - cos_theta * d_hat;
-        vec3<Scalar> F_j = Scalar(-0.5) * K * d_inv * n_perp;
+        vec3<Scalar> F_j = Scalar(-0.5) * K * f * d_inv * n_perp;
         vec3<Scalar> F_k = -F_j; // Newton's 3rd law: F_k = -F_j
 
         // Virial: W_ij = (1/2) * sum_pairs F_pair^a * dr_pair^b

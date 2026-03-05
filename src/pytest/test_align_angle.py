@@ -216,3 +216,181 @@ class TestAlignAngleForce:
         forces = force.forces
         if forces is not None:
             np.testing.assert_allclose(forces[0], [0, 0, 0], atol=1e-10)
+
+
+class TestDirectorAlignMultiplicity:
+    """Tests for multiplicity and phase parameters."""
+
+    def test_params_multiplicity_phase(self, device):
+        """Test setting and getting multiplicity and phase."""
+        force = align_angle.DirectorAlign()
+        force.params["align"] = dict(k=10.0, multiplicity=2, phase=1.5)
+        assert force.params["align"]["k"] == pytest.approx(10.0)
+        assert force.params["align"]["multiplicity"] == 2
+        assert force.params["align"]["phase"] == pytest.approx(1.5)
+
+    def test_defaults_backward_compatible(self, device):
+        """Omitting multiplicity/phase gives the same result as the old code."""
+        # theta=0 => U = k/2*(1 - cos(0)) = 0
+        positions = np.array([[-1, 0, 0], [0, 0, 0], [1, 0, 0]], dtype=float)
+        orientations = np.array(
+            [[1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]], dtype=float
+        )
+        snap = make_snapshot_with_angles(device, positions, orientations)
+        sim = hoomd.Simulation(device=device)
+        sim.create_state_from_snapshot(snap)
+
+        force = align_angle.DirectorAlign()
+        force.params["align"] = dict(k=10.0)  # no multiplicity/phase
+
+        nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+        integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[force])
+        sim.operations.integrator = integrator
+        sim.run(0)
+
+        total_e = sum(force.energies)
+        assert total_e == pytest.approx(0.0, abs=1e-10)
+
+    def test_multiplicity_2_nematic_aligned(self, device):
+        """m=2, phase=0: cos(2*0) = 1 => U = 0 when aligned."""
+        positions = np.array([[-1, 0, 0], [0, 0, 0], [1, 0, 0]], dtype=float)
+        orientations = np.array(
+            [[1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]], dtype=float
+        )
+        snap = make_snapshot_with_angles(device, positions, orientations)
+        sim = hoomd.Simulation(device=device)
+        sim.create_state_from_snapshot(snap)
+
+        force = align_angle.DirectorAlign()
+        k = 10.0
+        force.params["align"] = dict(k=k, multiplicity=2, phase=0.0)
+
+        nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+        integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[force])
+        sim.operations.integrator = integrator
+        sim.run(0)
+
+        total_e = sum(force.energies)
+        assert total_e == pytest.approx(0.0, abs=1e-10)
+
+    def test_multiplicity_2_nematic_anti_aligned(self, device):
+        """m=2, phase=0: cos(2*pi) = 1 => U = 0 when anti-aligned (nematic)."""
+        positions = np.array([[-1, 0, 0], [0, 0, 0], [1, 0, 0]], dtype=float)
+        # 180° around z: n_hat = (-1,0,0), theta = pi
+        orientations = np.array(
+            [[0, 0, 0, 1], [1, 0, 0, 0], [1, 0, 0, 0]], dtype=float
+        )
+        snap = make_snapshot_with_angles(device, positions, orientations)
+        sim = hoomd.Simulation(device=device)
+        sim.create_state_from_snapshot(snap)
+
+        force = align_angle.DirectorAlign()
+        k = 10.0
+        force.params["align"] = dict(k=k, multiplicity=2, phase=0.0)
+
+        nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+        integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[force])
+        sim.operations.integrator = integrator
+        sim.run(0)
+
+        total_e = sum(force.energies)
+        # cos(2*pi) = 1, U = k/2*(1-1) = 0
+        assert total_e == pytest.approx(0.0, abs=1e-10)
+
+    def test_multiplicity_2_perpendicular_max(self, device):
+        """m=2, phase=0: theta=pi/2 => cos(pi) = -1 => U = k."""
+        c45 = np.cos(np.pi / 4)
+        s45 = np.sin(np.pi / 4)
+        positions = np.array([[-1, 0, 0], [0, 0, 0], [1, 0, 0]], dtype=float)
+        orientations = np.array(
+            [[c45, 0, 0, s45], [1, 0, 0, 0], [1, 0, 0, 0]], dtype=float
+        )
+        snap = make_snapshot_with_angles(device, positions, orientations)
+        sim = hoomd.Simulation(device=device)
+        sim.create_state_from_snapshot(snap)
+
+        force = align_angle.DirectorAlign()
+        k = 8.0
+        force.params["align"] = dict(k=k, multiplicity=2, phase=0.0)
+
+        nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+        integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[force])
+        sim.operations.integrator = integrator
+        sim.run(0)
+
+        total_e = sum(force.energies)
+        # cos(2*pi/2) = cos(pi) = -1, U = k/2*(1-(-1)) = k
+        assert total_e == pytest.approx(k, rel=1e-5)
+
+    def test_phase_pi_anti_align(self, device):
+        """m=1, phase=pi: U = k/2*(1 - cos(theta+pi)) = k/2*(1+cos(theta)).
+        At theta=0, U = k. At theta=pi, U = 0."""
+        positions = np.array([[-1, 0, 0], [0, 0, 0], [1, 0, 0]], dtype=float)
+        # Aligned: theta = 0
+        orientations = np.array(
+            [[1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]], dtype=float
+        )
+        snap = make_snapshot_with_angles(device, positions, orientations)
+        sim = hoomd.Simulation(device=device)
+        sim.create_state_from_snapshot(snap)
+
+        force = align_angle.DirectorAlign()
+        k = 6.0
+        force.params["align"] = dict(k=k, multiplicity=1, phase=np.pi)
+
+        nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+        integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[force])
+        sim.operations.integrator = integrator
+        sim.run(0)
+
+        total_e = sum(force.energies)
+        # cos(0 + pi) = -1, U = k/2*(1-(-1)) = k
+        assert total_e == pytest.approx(k, rel=1e-5)
+
+    def test_phase_pi_anti_aligned_zero(self, device):
+        """m=1, phase=pi: at theta=pi (anti-aligned), U = 0."""
+        positions = np.array([[-1, 0, 0], [0, 0, 0], [1, 0, 0]], dtype=float)
+        orientations = np.array(
+            [[0, 0, 0, 1], [1, 0, 0, 0], [1, 0, 0, 0]], dtype=float
+        )
+        snap = make_snapshot_with_angles(device, positions, orientations)
+        sim = hoomd.Simulation(device=device)
+        sim.create_state_from_snapshot(snap)
+
+        force = align_angle.DirectorAlign()
+        k = 6.0
+        force.params["align"] = dict(k=k, multiplicity=1, phase=np.pi)
+
+        nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+        integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[force])
+        sim.operations.integrator = integrator
+        sim.run(0)
+
+        total_e = sum(force.energies)
+        # cos(pi + pi) = cos(2pi) = 1, U = k/2*(1-1) = 0
+        assert total_e == pytest.approx(0.0, abs=1e-10)
+
+    def test_multiplicity_2_newtons_third_law(self, device):
+        """Newton's third law holds with multiplicity=2."""
+        c30 = np.cos(np.pi / 6)
+        s30 = np.sin(np.pi / 6)
+        positions = np.array([[-1, 0, 0], [0, 0.5, 0], [1, 0, 0]], dtype=float)
+        orientations = np.array(
+            [[c30, 0, 0, s30], [1, 0, 0, 0], [1, 0, 0, 0]], dtype=float
+        )
+        snap = make_snapshot_with_angles(device, positions, orientations)
+        sim = hoomd.Simulation(device=device)
+        sim.create_state_from_snapshot(snap)
+
+        force = align_angle.DirectorAlign()
+        force.params["align"] = dict(k=5.0, multiplicity=2, phase=0.0)
+
+        nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+        integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[force])
+        sim.operations.integrator = integrator
+        sim.run(0)
+
+        forces = force.forces
+        if forces is not None:
+            total_f = np.sum(forces, axis=0)
+            np.testing.assert_allclose(total_f, [0, 0, 0], atol=1e-10)

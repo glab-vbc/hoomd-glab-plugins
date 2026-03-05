@@ -31,7 +31,7 @@ hipError_t gpu_compute_align_angle_forces(Scalar4* d_force,
                                           const unsigned int* apos_list,
                                           const unsigned int pitch,
                                           const unsigned int* n_angles_list,
-                                          const Scalar* d_params,
+                                          const Scalar4* d_params,
                                           unsigned int n_angle_types,
                                           int block_size);
 
