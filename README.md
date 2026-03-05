@@ -338,8 +338,15 @@ $\sin\alpha \to 0$ and the ratio $\sin(m\alpha+\varphi_0)/\sin\alpha$ is
 formally $0/0$.
 
 Physically, the torque must vanish at these configurations because
-the cross product $\hat{n}_i \times \hat{n}_j \to \mathbf{0}$. The product
-$T_\alpha \cdot (\hat{n}_i \times \hat{n}_j)$ remains finite by L'Hôpital's rule:
+the cross product
+
+$$\hat{n}_i \times \hat{n}_j \to \mathbf{0}$$
+
+The product
+
+$$T_\alpha \cdot (\hat{n}_i \times \hat{n}_j)$$
+
+remains finite by L'Hôpital's rule:
 
 $$\lim_{\alpha\to 0} \frac{\sin(m\alpha)}{\sin\alpha} = m$$
 
