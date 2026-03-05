@@ -295,11 +295,12 @@ $$\mathbf{F}_i^{(\mathrm{radial})}
 = -\varepsilon \cos(m\alpha + \varphi_0) \frac{dg}{d\mathbf{r}}
 = \frac{4\varepsilon \cos(m\alpha+\varphi_0) x}{r_c^2} \mathbf{r}$$
 
-where $\mathbf{r} = \mathbf{r}_i - \mathbf{r}_j$.
+where $\mathbf{r} = \mathbf{r}_i - \mathbf{r}_j$ and $x = 1 - r^2/r_c^2$.
 When $\cos(m\alpha + \varphi_0) > 0$ (favourable angular alignment), the
-force coefficient is negative (in the code, $f_{\mathrm{mag}} = -4\varepsilon\cos(m\alpha+\varphi_0) x/r_c^2 < 0$),
-so the force points antiparallel to $\mathbf{r}$, i.e. **toward** particle $j$ — attractive, as
-expected.
+force coefficient in the code is
+$f_{\mathrm{mag}} = -4\varepsilon\cos(m\alpha+\varphi_0) \, x/r_c^2$,
+which is negative, so the force points antiparallel to $\mathbf{r}$,
+i.e. **toward** particle $j$ — attractive, as expected.
 
 Newton's third law: $\mathbf{F}_j^{(\mathrm{radial})} = -\mathbf{F}_i^{(\mathrm{radial})}$.
 
@@ -339,7 +340,7 @@ Physically, the torque must vanish at these configurations because
 $\hat{n}_i \times \hat{n}_j \to \mathbf{0}$. The product
 $T_\alpha \cdot (\hat{n}_i \times \hat{n}_j)$ remains finite (by L'Hôpital:
 $\lim_{\alpha\to 0} \sin(m\alpha)/\sin\alpha = m$, multiplied by
-$\lvert\hat{n}_i \times \hat{n}_j\rvert = \sin\alpha \to 0$).
+$\lvert \hat{n}_i \times \hat{n}_j \rvert = \sin\alpha \to 0$).
 
 In the implementation, we set $T_\alpha = 0$ whenever $\sin\alpha < 10^{-8}$.
 
