@@ -9,6 +9,7 @@ Provides:
 """
 
 from hoomd.md.angle import Angle
+from hoomd.md.dihedral import Dihedral
 from hoomd.md.pair.aniso import AnisotropicPair
 from hoomd.data.typeparam import TypeParameter
 from hoomd.data.parameterdicts import TypeParameterDict
@@ -150,5 +151,60 @@ class DirectorPair(AnisotropicPair):
             "params",
             "particle_types",
             TypeParameterDict(epsilon=float, multiplicity=1, phase=0.0, len_keys=2),
+        )
+        self._add_typeparam(params)
+
+
+class SinSqDihedral(Dihedral):
+    r"""Sin²-multiplied dihedral force (singularity-free).
+
+    `SinSqDihedral` computes a modified periodic dihedral potential where the
+    torsional barrier is multiplied by :math:`\sin^2\theta_1\,\sin^2\theta_2`,
+    the squared sines of the two bond angles at the central atoms.  This
+    smoothly sends the potential and all forces to zero when any three
+    consecutive atoms become collinear, eliminating the :math:`1/\sin^2\theta`
+    singularity present in the standard dihedral formulation.
+
+    .. math::
+
+        U = \frac{k}{2}
+            \bigl(1 + d\,\cos(n\phi - \phi_0)\bigr)\,
+            \sin^2\!\theta_{abc}\;\sin^2\!\theta_{bcd}
+
+    where :math:`\phi` is the dihedral angle of the quartet
+    :math:`(a, b, c, d)`, :math:`\theta_{abc}` is the bond angle at atom
+    :math:`b`, and :math:`\theta_{bcd}` is the bond angle at atom :math:`c`.
+
+    When :math:`\theta_{abc} = \theta_{bcd} = 90°`, this reduces to the
+    standard periodic dihedral :math:`(k/2)(1 + d\cos(n\phi - \phi_0))`.
+
+    Example::
+
+        sinsq = align_angle.SinSqDihedral()
+        sinsq.params["A-A-A-A"] = dict(k=10.0, d=1, n=1, phi0=0)
+        sim.operations.integrator.forces.append(sinsq)
+
+    Attributes:
+        params (TypeParameter[``dihedral type``, dict]):
+            The parameter of the sin²-dihedral potential for each dihedral
+            type.  The dictionary has the following keys:
+
+            * ``k`` (`float`, **required**) - spring constant
+              :math:`[\mathrm{energy}]`
+            * ``d`` (`float`, **required**) - sign factor (``1`` or ``-1``)
+            * ``n`` (`int`, **required**) - multiplicity
+            * ``phi0`` (`float`, **optional**, default 0) - phase offset
+              :math:`\phi_0` in radians
+    """
+
+    _cpp_class_name = "SinSqDihedralForceCompute"
+    _ext_module = _align_angle
+
+    def __init__(self):
+        super().__init__()
+        params = TypeParameter(
+            "params",
+            "dihedral_types",
+            TypeParameterDict(k=float, d=float, n=int, phi0=0.0, len_keys=1),
         )
         self._add_typeparam(params)
