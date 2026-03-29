@@ -30,7 +30,8 @@ ExternalPatchForceComputeGPU::ExternalPatchForceComputeGPU(
         throw std::runtime_error("Error initializing ExternalPatchForceComputeGPU");
         }
 
-    m_tuner.reset(new Autotuner<1>({AutotunerBase::makeBlockSizeRange(m_exec_conf)},
+    m_tuner.reset(new Autotuner<2>({AutotunerBase::makeBlockSizeRange(m_exec_conf),
+                                    AutotunerBase::getTppListPow2(m_exec_conf)},
                                    m_exec_conf,
                                    "external_patch"));
     m_autotuners.push_back(m_tuner);
@@ -98,6 +99,10 @@ void ExternalPatchForceComputeGPU::computeForces(uint64_t timestep)
 
     // Launch the kernel
     m_tuner->begin();
+    auto param = m_tuner->getParam();
+    unsigned int block_size = param[0];
+    unsigned int threads_per_particle = param[1];
+
     (void)kernel::gpu_compute_external_patch_forces(
         d_force.data,
         d_virial.data,
@@ -116,7 +121,8 @@ void ExternalPatchForceComputeGPU::computeForces(uint64_t timestep)
         ForceReal(m_epsilon),
         ForceReal(m_rcutsq),
         ForceReal(m_width),
-        m_tuner->getParam()[0]);
+        block_size,
+        threads_per_particle);
 
     if (m_exec_conf->isCUDAErrorCheckingEnabled())
         CHECK_CUDA_ERROR();

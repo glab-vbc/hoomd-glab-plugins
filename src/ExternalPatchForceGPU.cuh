@@ -37,7 +37,8 @@ hipError_t gpu_compute_external_patch_forces(ForceReal4* d_force,
                                              const ForceReal epsilon,
                                              const ForceReal rcutsq,
                                              const ForceReal width,
-                                             const int block_size);
+                                             const int block_size,
+                                             const int threads_per_particle);
 
     } // end namespace kernel
     } // end namespace md

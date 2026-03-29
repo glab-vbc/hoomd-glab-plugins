@@ -42,7 +42,7 @@ class PYBIND11_EXPORT ExternalPatchForceComputeGPU : public ExternalPatchForceCo
     ~ExternalPatchForceComputeGPU();
 
     protected:
-    std::shared_ptr<Autotuner<1>> m_tuner; //!< Autotuner for block size
+    std::shared_ptr<Autotuner<2>> m_tuner; //!< Autotuner for block size and threads per particle
 
     //! Actually compute the forces on the GPU
     virtual void computeForces(uint64_t timestep);
