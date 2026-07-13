@@ -25,7 +25,6 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
-*_executed.ipynb
 
 # Demo trajectory output (GSD written by the demo notebooks)
 docs/*_traj/
@@ -36,7 +35,8 @@ docs/*_traj/
 # Generated benchmark images (docs/figures/*.png are committed)
 bench_*.png
 
-# Profiling output
+# Profiling / benchmark output
+benchmarks/results/
 profiling/results/
 *.nsys-rep
 *.sqlite

@@ -181,10 +181,10 @@ See [`docs/demo_sinsq_dihedral.ipynb`](docs/demo_sinsq_dihedral.ipynb) for:
 1. **Force landscape** — 2-D heatmaps comparing force magnitudes of
    `SinSqDihedral` (bounded) vs. `Periodic` (divergent) across all bond-angle
    combinations.
-2. **Comb polymer simulation** — A 1000-particle comb polymer with T-shaped
-   junctions initialized from a random-walk backbone.
-3. **Stability comparison** — `SinSqDihedral` survives 2.5× larger time steps
-   than `Periodic` on the same system.
+2. **Backbone helix** — a 2000-bead near-collinear chain ($\theta_0 = 170°$)
+   folds into a gauche helix while the dihedral force stays finite.
+3. **Stability comparison** — `SinSqDihedral` integrates stably at ~2× the time
+   step of `Periodic` on the same near-collinear chain.
 
 ---
 
@@ -333,15 +333,24 @@ sim.operations.integrator.forces.append(patch)
 
 ## Examples
 
-Example notebooks live in [`docs/`](docs/) — one per force
-(`demo_align_angle`, `demo_nematic_pair`, `demo_sinsq_dihedral`,
-`demo_external_patch`, `demo_soft_harmonic`, …) plus benchmark notebooks. The
-[`demo_soft_harmonic.ipynb`](docs/demo_soft_harmonic.ipynb) notebook shows the
-*emergent* behaviour of the saturating tails — thermal kinks and a shortened persistence
-length (flat angle), brittle rupture vs ductile yield under pulling (flat vs linear
-bond), and a larger stable time step from the force cap. The energy-landscape figures
-above are produced by [`docs/energy_landscapes.ipynb`](docs/energy_landscapes.ipynb)
-(analytic, no HOOMD run required), which also (re)writes the PNGs in `docs/figures/`.
+Example notebooks live in [`docs/`](docs/), one per force, each a single clean
+pipeline (configure → forces → Langevin → visualize) that shows the force's
+*emergent* behaviour on a real GPU simulation:
+
+| notebook | force(s) | shows |
+|----------|----------|-------|
+| [`demo_align_angle`](docs/demo_align_angle.ipynb) | `DirectorAlign` | orientations order onto a polymer's local tangent |
+| [`demo_director_pair`](docs/demo_director_pair.ipynb) | `DirectorPair` | spontaneous nematic vs polar ordering |
+| [`demo_sinsq_dihedral`](docs/demo_sinsq_dihedral.ipynb) | `SinSqDihedral` | bounded forces near collinear; a helix; larger stable `dt` |
+| [`demo_external_patch`](docs/demo_external_patch.ipynb) | `ExternalPatch` | patchy self-assembly into dimers and filaments |
+| [`demo_soft_harmonic`](docs/demo_soft_harmonic.ipynb) | `SoftHarmonic` + `SoftHarmonicAngle` | thermal kinks, brittle-vs-ductile rupture, larger stable `dt` |
+
+The shared plotting/analysis helpers live in [`docs/demo_viz.py`](docs/demo_viz.py)
+(the simulation half of each notebook is self-contained and imports nothing from it).
+The analytic energy-landscape figures above are produced by
+[`docs/energy_landscapes.ipynb`](docs/energy_landscapes.ipynb) (numpy only, no HOOMD
+run required), which also (re)writes the PNGs in `docs/figures/`. Performance
+benchmarks live under [`benchmarks/`](benchmarks/).
 
 ---
 
