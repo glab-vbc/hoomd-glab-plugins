@@ -326,9 +326,10 @@ sim.operations.integrator.forces.append(patch)
 Example notebooks live in [`docs/examples/`](docs/examples/) — one per force
 (`demo_align_angle`, `demo_nematic_pair`, `demo_sinsq_dihedral`,
 `demo_external_patch`, `demo_soft_harmonic`, …) plus benchmark notebooks. The
-[`demo_soft_harmonic.ipynb`](docs/examples/demo_soft_harmonic.ipynb) notebook reads
-the bond/angle energy and force straight from the compiled forces and shows an
-over-stretched chain staying finite. The energy-landscape figures
+[`demo_soft_harmonic.ipynb`](docs/examples/demo_soft_harmonic.ipynb) notebook shows the
+*emergent* behaviour of the saturating tails — thermal kinks and a shortened persistence
+length (flat angle), brittle rupture vs ductile yield under pulling (flat vs linear
+bond), and a larger stable time step from the force cap. The energy-landscape figures
 above are produced by [`docs/energy_landscapes.ipynb`](docs/energy_landscapes.ipynb)
 (analytic, no HOOMD run required), which also (re)writes the PNGs in `docs/figures/`.
 
