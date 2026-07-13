@@ -543,3 +543,70 @@ class TestAnalyticReference:
         _, hoomd_f, _ = _get_hoomd_results(device, pos, ori, K, mult, phase)
         total_f = np.sum(hoomd_f, axis=0)
         np.testing.assert_allclose(total_f, [0, 0, 0], atol=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Emergent / statistical behavior (moved out of the demo notebook)
+#
+# Under Langevin dynamics a single oriented particle held by two fixed guides
+# should thermalize around perfect alignment with <cos theta> -> 1 - kT/K in the
+# stiff limit, and tighter fluctuations (smaller variance) as K grows.  These are
+# tolerant, fixed-seed statistical checks, not exact ones.
+# ---------------------------------------------------------------------------
+
+def _run_equipartition(device, K, kT=1.0, dt=0.005, n_steps=40000, sample_every=50,
+                       seed=123):
+    """Langevin-thermostat a single oriented particle between two fixed guides;
+    return the array of cos(theta) samples over the last half of the run."""
+    snap = hoomd.Snapshot(device.communicator)
+    if snap.communicator.rank == 0:
+        snap.configuration.box = [20, 20, 20, 0, 0, 0]
+        snap.particles.N = 3
+        snap.particles.types = ["Oriented", "Guide"]
+        snap.particles.typeid[:] = [0, 1, 1]           # particle 0 is oriented (i)
+        snap.particles.position[:] = [[0, 0, 0], [-1, 0, 0], [1, 0, 0]]
+        # start 90 deg away from the target (body-x -> lab -z)
+        c, s = np.cos(np.pi / 4), np.sin(np.pi / 4)
+        snap.particles.orientation[:] = [[c, 0, -s, 0], [1, 0, 0, 0], [1, 0, 0, 0]]
+        snap.particles.moment_inertia[0] = [1.0, 1.0, 1.0]
+        snap.particles.mass[:] = 1.0
+        snap.angles.N = 1
+        snap.angles.types = ["align"]
+        snap.angles.group[0] = (0, 1, 2)               # d = r_2 - r_1 = +x (fixed)
+
+    sim = hoomd.Simulation(device=device, seed=seed)
+    sim.create_state_from_snapshot(snap)
+    force = align_angle.DirectorAlign()
+    force.params["align"] = dict(k=K)
+    # integrate only the oriented particle -> the guides (hence d_hat) stay fixed
+    langevin = hoomd.md.methods.Langevin(filter=hoomd.filter.Type(["Oriented"]), kT=kT)
+    langevin.gamma_r["Oriented"] = (1.0, 1.0, 1.0)   # thermal bath for the rotational DOF
+    langevin.gamma_r["Guide"] = (1.0, 1.0, 1.0)
+    integ = hoomd.md.Integrator(dt=dt, methods=[langevin], forces=[force],
+                                integrate_rotational_dof=True)
+    sim.operations.integrator = integ
+
+    d_hat = np.array([1.0, 0.0, 0.0])
+    cos = []
+    for _ in range(n_steps // sample_every):
+        sim.run(sample_every)
+        with sim.state.cpu_local_snapshot as ss:
+            q = np.array(ss.particles.orientation[ss.particles.tag[:] == 0][0])
+        cos.append(np.dot(_rotate_quat(q, np.array([1.0, 0.0, 0.0])), d_hat))
+    cos = np.array(cos)
+    return cos[len(cos) // 2:]
+
+
+class TestEquipartition:
+    """Emergent alignment statistics under thermal noise (fixed seed, tolerant)."""
+
+    def test_strong_spring_aligns(self, device):
+        cos = _run_equipartition(device, K=50.0, kT=1.0)
+        assert cos.mean() > 0.85            # stiff spring -> nearly aligned
+
+    def test_variance_decreases_with_stiffness(self, device):
+        weak = _run_equipartition(device, K=5.0, kT=1.0)
+        stiff = _run_equipartition(device, K=50.0, kT=1.0)
+        # stiffer alignment -> higher mean cos theta and tighter fluctuations
+        assert stiff.mean() > weak.mean()
+        assert stiff.var() < weak.var()

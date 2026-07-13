@@ -27,6 +27,9 @@ Thumbs.db
 .ipynb_checkpoints/
 *_executed.ipynb
 
+# Demo trajectory output (GSD written by the demo notebooks)
+docs/*_traj/
+
 # Local virtual environment
 .venv/
 
