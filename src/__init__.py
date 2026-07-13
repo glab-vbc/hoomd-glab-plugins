@@ -1,11 +1,16 @@
-"""Director-alignment forces plugin for HOOMD-blue.
+"""Custom forces plugin for HOOMD-blue (``align_angle``).
 
-Provides:
+Provides six forces (all CPU + GPU):
 
 * ``DirectorAlign`` — an angle force that aligns an oriented particle's
   body-frame x-axis to the direction defined by two guide particles.
 * ``DirectorPair`` — an anisotropic pair potential that attracts particles
   with parallel or anti-parallel orientations.
+* ``SinSqDihedral`` — a singularity-free dihedral that multiplies the periodic
+  torsion by sin²θ₁ sin²θ₂, sending forces smoothly to zero at collinear geometries.
+* ``SoftHarmonic`` — a harmonic bond whose tail saturates to a constant force
+  (``tail="linear"``) or releases to zero force (``tail="flat"``).
+* ``SoftHarmonicAngle`` — the same saturating harmonic well for an angle.
 * ``ExternalPatch`` — a patch interaction with externally defined patch
   directions (no quaternion DOFs required).
 """
@@ -14,6 +19,7 @@ import copy
 
 import hoomd
 from hoomd.md.angle import Angle
+from hoomd.md.bond import Bond
 from hoomd.md.dihedral import Dihedral
 from hoomd.md.force import Force
 from hoomd.md.pair.aniso import AnisotropicPair
@@ -87,6 +93,125 @@ class DirectorAlign(Angle):
             "params",
             "angle_types",
             TypeParameterDict(k=float, multiplicity=1, phase=0.0, len_keys=1),
+        )
+        self._add_typeparam(params)
+
+
+class SoftHarmonic(Bond):
+    r"""Soft/capped harmonic bond force.
+
+    `SoftHarmonic` is harmonic near the rest length but *saturates* in the tail,
+    so a stretched bond neither produces a runaway force nor stays infinitely
+    stiff. With signed deviation :math:`x = r - r_0` and crossover
+    :math:`x_c > 0`, both tail modes share the same curvature at the minimum
+    (:math:`U''(0) = k`), so ``k`` keeps its usual harmonic meaning.
+
+    ``tail = "linear"`` (Huber / capped) — exactly harmonic inside ``x_c``, then
+    a constant restoring force ``k * x_c`` (the bond never releases):
+
+    .. math::
+
+        U(x) = \begin{cases}
+            \tfrac12 k x^2 & |x| \le x_c \\
+            k x_c |x| - \tfrac12 k x_c^2 & |x| > x_c
+        \end{cases}
+
+    ``tail = "flat"`` (compact quartic damping) — the restoring force
+    ``-k x (1 - (x/x_c)^2)^2`` decays smoothly to zero at ``x_c`` and stays zero
+    beyond it (the bond softly releases); the energy plateaus at
+    :math:`k x_c^2 / 6`:
+
+    .. math::
+
+        U(x) = \begin{cases}
+            \tfrac12 k x^2 \left(1 - s^2 + \tfrac13 s^4\right),\ s = x/x_c
+                & |x| \le x_c \\
+            \tfrac16 k x_c^2 & |x| > x_c
+        \end{cases}
+
+    Example::
+
+        soft = align_angle.SoftHarmonic()
+        soft.params["A-A"] = dict(k=100.0, r0=1.0, x_c=0.5, tail="linear")
+        sim.operations.integrator.forces.append(soft)
+
+    Attributes:
+        params (TypeParameter[``bond type``, dict]):
+            The parameters for each bond type, with keys:
+
+            * ``k`` (`float`, **required**) - stiffness
+              :math:`[\mathrm{energy} \cdot \mathrm{length}^{-2}]`
+            * ``r0`` (`float`, **required**) - rest length
+              :math:`[\mathrm{length}]`
+            * ``x_c`` (`float`, **required**) - crossover deviation
+              :math:`[\mathrm{length}]`, must be > 0
+            * ``tail`` (`str`, **optional**, default ``"linear"``) - tail mode,
+              either ``"linear"`` (constant-force cap) or ``"flat"``
+              (force releases to zero)
+    """
+
+    _cpp_class_name = "PotentialBondSoftHarmonic"
+    _ext_module = _align_angle
+
+    def __init__(self):
+        super().__init__()
+        params = TypeParameter(
+            "params",
+            "bond_types",
+            TypeParameterDict(k=float, r0=float, x_c=float, tail="linear", len_keys=1),
+        )
+        self._add_typeparam(params)
+
+
+class SoftHarmonicAngle(Angle):
+    r"""Soft/capped harmonic angle force.
+
+    `SoftHarmonicAngle` is quadratic about the equilibrium angle :math:`t_0` but
+    *saturates* in the tail. With signed deviation :math:`x = \theta - t_0` and
+    crossover :math:`x_c > 0` (radians), both tail modes share the curvature at
+    the minimum (:math:`U''(0) = k`).
+
+    ``tail = "flat"`` (default) — the restoring torque decays smoothly to zero at
+    ``x_c`` and stays zero beyond it (a free hinge past the threshold), via the
+    compact quartic damping ``-k x (1 - (x/x_c)^2)^2``; the energy plateaus at
+    :math:`k x_c^2 / 6`.
+
+    ``tail = "linear"`` (Huber / capped) — exactly harmonic inside ``x_c``, then
+    a constant restoring torque ``k x_c``.
+
+    See `SoftHarmonic` for the explicit piecewise energies (identical, with
+    :math:`x = \theta - t_0`).
+
+    Example::
+
+        soft = align_angle.SoftHarmonicAngle()
+        soft.params["A-A-A"] = dict(k=20.0, t0=numpy.pi, x_c=0.6, tail="flat")
+        sim.operations.integrator.forces.append(soft)
+
+    Attributes:
+        params (TypeParameter[``angle type``, dict]):
+            The parameters for each angle type, with keys:
+
+            * ``k`` (`float`, **required**) - stiffness
+              :math:`[\mathrm{energy} \cdot \mathrm{radian}^{-2}]`
+            * ``t0`` (`float`, **required**) - equilibrium angle
+              :math:`[\mathrm{radian}]`
+            * ``x_c`` (`float`, **required**) - crossover deviation
+              :math:`[\mathrm{radian}]`, must be > 0
+            * ``tail`` (`str`, **optional**, default ``"flat"``) - tail mode,
+              either ``"flat"`` (torque releases to zero) or ``"linear"``
+              (constant-torque cap)
+    """
+
+    _cpp_class_name = "SoftHarmonicAngleForceCompute"
+    _ext_module = _align_angle
+
+    def __init__(self):
+        super().__init__()
+        params = TypeParameter(
+            "params",
+            "angle_types",
+            TypeParameterDict(k=float, t0=float, x_c=float, tail="flat", len_keys=1),
         )
         self._add_typeparam(params)
 

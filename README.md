@@ -5,7 +5,7 @@ generated with the assistance of AI (GitHub Copilot). It may contain errors.
 Please verify the formulas and implementation against your own understanding
 before using in production.**
 
-A [HOOMD-blue](https://hoomd-blue.readthedocs.io/) plugin providing three
+A [HOOMD-blue](https://hoomd-blue.readthedocs.io/) plugin providing six
 custom forces for anisotropic and bonded-interaction simulations:
 
 1. **`DirectorAlign`** — aligns a particle's body axis to a direction defined by two
@@ -15,6 +15,12 @@ custom forces for anisotropic and bonded-interaction simulations:
 3. **`SinSqDihedral`** — a **singularity-free** dihedral potential that multiplies
    the standard periodic torsion by sin²θ₁ sin²θ₂, smoothly sending forces to
    zero at collinear geometries.
+4. **`SoftHarmonic`** — a harmonic **bond** whose tail saturates: a constant-force
+   cap (`"linear"`) or a smooth release to zero force (`"flat"`).
+5. **`SoftHarmonicAngle`** — the same saturating harmonic well for an **angle**
+   (capped restoring torque, or a free hinge past a threshold).
+6. **`ExternalPatch`** — a patchy attraction with externally defined patch
+   directions (no quaternion DOFs), acting through a neighbour list.
 
 All forces run on **CPU and GPU** (HIP/CUDA).
 
@@ -36,6 +42,8 @@ $$U = \frac{K}{2}\bigl(1 - \cos(m \theta + \varphi_0)\bigr), \quad \theta = \arc
 
 where $m$ is `multiplicity` (default 1) and $\varphi_0$ is `phase` (default 0).
 With the defaults this reduces to $U = \frac{K}{2}(1 - \hat{n}\cdot\hat{d})$.
+
+![DirectorAlign alignment energy vs director angle](docs/figures/directoralign.png)
 
 ### Usage
 
@@ -80,6 +88,8 @@ and $\varphi_0$ is `phase` (default 0).
 
 The smooth compact envelope $g(r) = (1 - r^2/r_c^2)^2$ ensures both force and
 energy vanish continuously at the cutoff.
+
+![DirectorPair angular part and radial envelope](docs/figures/directorpair.png)
 
 ### Usage
 
@@ -140,6 +150,8 @@ atoms.
 This is particularly important for **comb polymers**, **branched topologies**,
 and any system where backbone bending allows near-collinear configurations.
 
+![SinSqDihedral torsion and singularity-free envelope](docs/figures/sinsqdihedral.png)
+
 ### Usage
 
 ```python
@@ -176,6 +188,139 @@ See `demo_sinsq_dihedral.ipynb` for:
 
 ---
 
+## 4. SoftHarmonic (bond)
+
+### Physics
+
+A harmonic bond that stays quadratic near the rest length but **saturates** in the
+tail, so an over-stretched bond neither produces a runaway force nor stays
+infinitely stiff. With signed deviation $x = r - r_0$ and crossover $x_c > 0$, both
+tail modes share the same curvature at the minimum ($U''(0) = k$), so `k` keeps its
+usual harmonic meaning and switching `tail` does not change the small-deformation
+physics.
+
+**`tail = "linear"`** (Huber / capped) — exactly harmonic inside $x_c$, then a
+constant restoring force $k\,x_c$ (the bond never releases):
+
+$$U(x) = \begin{cases} \tfrac{1}{2} k x^2 & |x| \le x_c \\[4pt] k x_c |x| - \tfrac{1}{2} k x_c^2 & |x| > x_c \end{cases}$$
+
+**`tail = "flat"`** (compact quartic damping) — the restoring force
+$-k x (1 - (x/x_c)^2)^2$ decays smoothly to zero at $x_c$ and stays zero beyond it
+(the bond softly releases); the energy plateaus at $k x_c^2 / 6$:
+
+$$U(x) = \begin{cases} \tfrac{1}{2} k x^2 \left(1 - s^2 + \tfrac{1}{3} s^4\right),\ s = x/x_c & |x| \le x_c \\[4pt] \tfrac{1}{6} k x_c^2 & |x| > x_c \end{cases}$$
+
+The `"flat"` force is a single branch with no `exp`/`trig` — it is C¹ (force *and*
+its slope vanish at $x_c$), cheaper than a Gaussian well and smoother than a cosine
+ramp.
+
+![SoftHarmonic bond energy and restoring force](docs/figures/softharmonic_bond.png)
+
+### Usage
+
+```python
+from hoomd import align_angle
+
+soft = align_angle.SoftHarmonic()
+soft.params["A-A"] = dict(k=100.0, r0=1.0, x_c=0.5, tail="linear")  # or "flat"
+
+integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `k` | float | — | Stiffness $[\mathrm{energy}\cdot\mathrm{length}^{-2}]$ |
+| `r0` | float | — | Rest length $[\mathrm{length}]$ |
+| `x_c` | float | — | Crossover deviation $[\mathrm{length}]$, must be $> 0$ |
+| `tail` | str | `"linear"` | `"linear"` (constant-force cap) or `"flat"` (force releases to 0) |
+
+---
+
+## 5. SoftHarmonicAngle (angle)
+
+### Physics
+
+The same saturating harmonic well applied to a bond **angle**: quadratic about the
+equilibrium angle $t_0$, with a tail that either caps the restoring torque
+(`"linear"`) or releases it to zero past a threshold (`"flat"` — a free hinge). The
+piecewise energy is identical to `SoftHarmonic` (§4) with $x = \theta - t_0$, again
+sharing the curvature $U''(0) = k$.
+
+![SoftHarmonicAngle energy vs bond angle](docs/figures/softharmonic_angle.png)
+
+### Usage
+
+```python
+import numpy
+from hoomd import align_angle
+
+soft = align_angle.SoftHarmonicAngle()
+soft.params["A-A-A"] = dict(k=20.0, t0=numpy.pi, x_c=0.6, tail="flat")  # or "linear"
+
+integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `k` | float | — | Stiffness $[\mathrm{energy}\cdot\mathrm{radian}^{-2}]$ |
+| `t0` | float | — | Equilibrium angle $[\mathrm{radian}]$ |
+| `x_c` | float | — | Crossover deviation $[\mathrm{radian}]$, must be $> 0$ |
+| `tail` | str | `"flat"` | `"flat"` (torque releases to 0) or `"linear"` (constant-torque cap) |
+
+---
+
+## 6. ExternalPatch (patchy attraction)
+
+### Physics
+
+A patchy attraction between designated particles, with patch directions defined
+**externally** by partner particles rather than by quaternion degrees of freedom.
+Each patched particle $i$ carries a virtual patch pointing toward its partner $j$;
+when two patched particles come within $r_c$, they attract via
+
+$$U_{ik} = -\varepsilon\,(1 - r^2/r_c^2)^2\, f_i\, f_k$$
+
+where $f_i$ is a cubic Hermite (smoothstep) angular envelope of the alignment
+$u = \hat{p}_i \cdot \hat{r}_{ik}$ between patch $i$ and the separation direction:
+
+$$t = \mathrm{clamp}\!\left(\frac{u - (1 - w)}{w},\, 0,\, 1\right), \qquad f = 3t^2 - 2t^3$$
+
+The patch is fully active ($f = 1$) when aligned ($u \ge 1$) and inactive ($f = 0$)
+once misaligned beyond the `width` $w$ ($u \le 1 - w$). The radial factor
+$(1 - r^2/r_c^2)^2$ sends both energy and force smoothly to zero at $r_c$. The
+"torque" on a patch manifests as non-central translational forces on the partner
+particles — no rotational DOFs are required.
+
+![ExternalPatch radial well and angular envelope](docs/figures/externalpatch.png)
+
+### Usage
+
+```python
+from hoomd import align_angle
+
+nlist = hoomd.md.nlist.Cell(buffer=0.4)
+patch = align_angle.ExternalPatch(nlist=nlist, r_cut=3.0)
+patch.epsilon = 5.0
+patch.width = 0.5
+patch.partners = [(0, 1), (2, 3)]   # (attractor_tag, director_tag) pairs
+sim.operations.integrator.forces.append(patch)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `epsilon` | float | — | Attraction strength $\varepsilon$ |
+| `width` | float | 0.5 | Hermite transition width $w$ in cosine space |
+| `r_cut` | float | — | Cutoff radius $r_c$ (constructor argument) |
+| `partners` | list[(int,int)] | `[]` | `(attractor_tag, director_tag)` pairs defining patch directions |
+
+---
+
 ## Building
 
 Compatible with both **upstream HOOMD-blue** (glotzerlab) and the
@@ -193,22 +338,30 @@ cmake --install build
 When building against hoomd-sloptimize, forces are automatically evaluated in
 `ForceReal` (float32) precision. Against upstream HOOMD, `ForceReal` is aliased
 to `Scalar` via the `MixedPrecisionCompat.h` shim, so no source changes are
-needed.
+needed. The build also **auto-detects** installs that ship a native `ForceReal`
+type *without* defining the `HOOMD_HAS_FORCEREAL` guard macro (some upstream 6.x
+builds): `src/CMakeLists.txt` probes the installed `hoomd/HOOMDMath.h` at configure
+time and defines the macro itself, so you never need to pass `-DHOOMD_HAS_FORCEREAL`
+manually.
 
 ## Tests
 
 ```bash
-python -m pytest src/pytest/test_align_angle.py src/pytest/test_nematic_pair.py src/pytest/test_sinsq_dihedral.py
+python -m pytest src/pytest/
 ```
 
-50 tests total (15 DirectorAlign + 23 DirectorPair + 12 SinSqDihedral).
+One test module per force (`test_align_angle`, `test_nematic_pair`,
+`test_sinsq_dihedral`, `test_soft_harmonic_bond`, `test_soft_harmonic_angle`,
+`test_external_patch`), validating energies and forces against analytic and
+finite-difference references on both CPU and GPU.
 
 ---
 
 ## Mathematical and Physical Details
 
-This section provides the full derivations behind both forces, from physical
-motivation to implementation-level detail.
+This section provides the full derivations behind the orientation-coupling forces,
+from physical motivation to implementation-level detail. (The bonded saturating
+forces and the patch force are documented in §4–§6 above.)
 
 ### Motivation
 
@@ -228,13 +381,16 @@ $$\hat{n} = \mathrm{rotate}(q, \hat{x})$$
 
 where $\hat{x} = (1,0,0)$ is the body-frame x-axis.
 
-This plugin provides three forces:
+This plugin provides six forces:
 
 | Force | Topology | Purpose |
 |-------|----------|---------|
 | `DirectorAlign` | Angle $(i,j,k)$ | Steer particle $i$'s director toward an externally defined direction |
 | `DirectorPair` | Pair $(i,j)$ | Couple neighbouring particle directors to each other |
 | `SinSqDihedral` | Dihedral $(a,b,c,d)$ | Singularity-free dihedral that vanishes at collinear geometries |
+| `SoftHarmonic` | Bond $(i,j)$ | Harmonic bond with a capped (`linear`) or releasing (`flat`) tail |
+| `SoftHarmonicAngle` | Angle $(i,j,k)$ | Harmonic angle with a capped or releasing tail |
+| `ExternalPatch` | Neighbour list | Patchy attraction with externally defined patch directions |
 
 Both potentials share the same `(multiplicity, phase)` parametrization of their
 angular dependence, described next.

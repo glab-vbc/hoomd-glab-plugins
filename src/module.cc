@@ -13,11 +13,15 @@ void export_AlignAngleForceCompute(pybind11::module& m);
 void export_AnisoPotentialPairNematic(pybind11::module& m);
 void export_ExternalPatchForceCompute(pybind11::module& m);
 void export_SinSqDihedralForceCompute(pybind11::module& m);
+void export_SoftHarmonicBond(pybind11::module& m);
+void export_SoftHarmonicAngleForceCompute(pybind11::module& m);
 #ifdef ENABLE_HIP
 void export_AlignAngleForceComputeGPU(pybind11::module& m);
 void export_AnisoPotentialPairNematicGPU(pybind11::module& m);
 void export_ExternalPatchForceComputeGPU(pybind11::module& m);
 void export_SinSqDihedralForceComputeGPU(pybind11::module& m);
+void export_SoftHarmonicBondGPU(pybind11::module& m);
+void export_SoftHarmonicAngleForceComputeGPU(pybind11::module& m);
 #endif
     } // end namespace detail
     } // end namespace md
@@ -31,10 +35,14 @@ PYBIND11_MODULE(_align_angle, m)
     export_AnisoPotentialPairNematic(m);
     export_ExternalPatchForceCompute(m);
     export_SinSqDihedralForceCompute(m);
+    export_SoftHarmonicBond(m);
+    export_SoftHarmonicAngleForceCompute(m);
 #ifdef ENABLE_HIP
     export_AlignAngleForceComputeGPU(m);
     export_AnisoPotentialPairNematicGPU(m);
     export_ExternalPatchForceComputeGPU(m);
     export_SinSqDihedralForceComputeGPU(m);
+    export_SoftHarmonicBondGPU(m);
+    export_SoftHarmonicAngleForceComputeGPU(m);
 #endif
     }

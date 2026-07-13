@@ -25,3 +25,15 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+*_executed.ipynb
+
+# Local virtual environment
+.venv/
+
+# Generated benchmark images (docs/figures/*.png are committed)
+bench_*.png
+
+# Profiling output
+profiling/results/
+*.nsys-rep
+*.sqlite

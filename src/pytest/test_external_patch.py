@@ -12,8 +12,30 @@ Tests
 
 import sys
 import numpy as np
+import pytest
 import hoomd
 from hoomd import align_angle
+
+
+def _gpu_available():
+    """True if HOOMD can see at least one GPU (for pytest parametrization)."""
+    try:
+        return len(hoomd.device.GPU.get_available_devices()) > 0
+    except Exception:
+        return False
+
+
+@pytest.fixture(
+    params=[False] + ([True] if _gpu_available() else []),
+    ids=lambda g: "gpu" if g else "cpu",
+)
+def use_gpu(request):
+    """Run each test on CPU, and also on GPU when one is available.
+
+    Standalone use (``python test_external_patch.py [--gpu]``) is unaffected — the
+    ``__main__`` runner passes ``use_gpu`` explicitly and ignores this fixture.
+    """
+    return request.param
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -131,7 +153,7 @@ def make_sim(positions, partners, epsilon=5.0, width=0.5,
 #  Test 6a — Setup + energy sanity check
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_setup(use_gpu=False):
+def test_setup(use_gpu):
     """Build a 4-particle system, check HOOMD energy ≈ Python reference."""
     print("=" * 60)
     print("Test 6a: Setup and energy sanity check")
@@ -173,7 +195,7 @@ def test_setup(use_gpu=False):
 #  Test 6b — Finite-difference force validation
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_finite_diff(use_gpu=False):
+def test_finite_diff(use_gpu):
     """Compare C++ analytical forces to central-difference gradient of the
     Python reference energy (double-precision throughout).
     """
@@ -244,7 +266,7 @@ def test_finite_diff(use_gpu=False):
 #  Test 6c — Momentum conservation  (ΣF = 0)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_momentum(use_gpu=False):
+def test_momentum(use_gpu):
     """Total force on all particles must vanish."""
     print("=" * 60)
     print("Test 6c: Momentum conservation")
@@ -277,7 +299,7 @@ def test_momentum(use_gpu=False):
 #  Test 6d — NVE energy conservation
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_nve(use_gpu=False):
+def test_nve(use_gpu):
     """Run NVE with 20 particles for 10 000 steps; check energy drift."""
     print("=" * 60)
     print("Test 6d: NVE energy conservation")
@@ -328,7 +350,7 @@ def test_nve(use_gpu=False):
 #  Test 6e — Edge cases
 # ═══════════════════════════════════════════════════════════════════════════
 
-def test_edge_cases(use_gpu=False):
+def test_edge_cases(use_gpu):
     """No-partner particle, pair at r_cut, single pair (no self-energy)."""
     print("=" * 60)
     print("Test 6e: Edge cases")
