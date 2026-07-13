@@ -325,7 +325,10 @@ sim.operations.integrator.forces.append(patch)
 
 Example notebooks live in [`docs/examples/`](docs/examples/) — one per force
 (`demo_align_angle`, `demo_nematic_pair`, `demo_sinsq_dihedral`,
-`demo_external_patch`, …) plus benchmark notebooks. The energy-landscape figures
+`demo_external_patch`, `demo_soft_harmonic`, …) plus benchmark notebooks. The
+[`demo_soft_harmonic.ipynb`](docs/examples/demo_soft_harmonic.ipynb) notebook reads
+the bond/angle energy and force straight from the compiled forces and shows an
+over-stretched chain staying finite. The energy-landscape figures
 above are produced by [`docs/energy_landscapes.ipynb`](docs/energy_landscapes.ipynb)
 (analytic, no HOOMD run required), which also (re)writes the PNGs in `docs/figures/`.
 
