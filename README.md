@@ -176,7 +176,7 @@ integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[sinsq])
 
 ### Demo notebook
 
-See [`docs/examples/demo_sinsq_dihedral.ipynb`](docs/examples/demo_sinsq_dihedral.ipynb) for:
+See [`docs/demo_sinsq_dihedral.ipynb`](docs/demo_sinsq_dihedral.ipynb) for:
 
 1. **Force landscape** — 2-D heatmaps comparing force magnitudes of
    `SinSqDihedral` (bounded) vs. `Periodic` (divergent) across all bond-angle
@@ -323,10 +323,10 @@ sim.operations.integrator.forces.append(patch)
 
 ## Examples
 
-Example notebooks live in [`docs/examples/`](docs/examples/) — one per force
+Example notebooks live in [`docs/`](docs/) — one per force
 (`demo_align_angle`, `demo_nematic_pair`, `demo_sinsq_dihedral`,
 `demo_external_patch`, `demo_soft_harmonic`, …) plus benchmark notebooks. The
-[`demo_soft_harmonic.ipynb`](docs/examples/demo_soft_harmonic.ipynb) notebook shows the
+[`demo_soft_harmonic.ipynb`](docs/demo_soft_harmonic.ipynb) notebook shows the
 *emergent* behaviour of the saturating tails — thermal kinks and a shortened persistence
 length (flat angle), brittle rupture vs ductile yield under pulling (flat vs linear
 bond), and a larger stable time step from the force cap. The energy-landscape figures
