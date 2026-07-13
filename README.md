@@ -176,7 +176,7 @@ integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[sinsq])
 
 ### Demo notebook
 
-See `demo_sinsq_dihedral.ipynb` for:
+See [`demos/demo_sinsq_dihedral.ipynb`](demos/demo_sinsq_dihedral.ipynb) for:
 
 1. **Force landscape** — 2-D heatmaps comparing force magnitudes of
    `SinSqDihedral` (bounded) vs. `Periodic` (divergent) across all bond-angle
@@ -318,6 +318,16 @@ sim.operations.integrator.forces.append(patch)
 | `width` | float | 0.5 | Hermite transition width $w$ in cosine space |
 | `r_cut` | float | — | Cutoff radius $r_c$ (constructor argument) |
 | `partners` | list[(int,int)] | `[]` | `(attractor_tag, director_tag)` pairs defining patch directions |
+
+---
+
+## Demos
+
+Example notebooks live in [`demos/`](demos/) — one per force
+(`demo_align_angle`, `demo_nematic_pair`, `demo_sinsq_dihedral`,
+`demo_external_patch`, …) plus benchmark notebooks. The energy-landscape figures
+above are produced by [`docs/energy_landscapes.ipynb`](docs/energy_landscapes.ipynb)
+(analytic, no HOOMD run required), which also (re)writes the PNGs in `docs/figures/`.
 
 ---
 
