@@ -202,13 +202,23 @@ physics.
 **`tail = "linear"`** (Huber / capped) — exactly harmonic inside $x_c$, then a
 constant restoring force $k\,x_c$ (the bond never releases):
 
-$$U(x) = \begin{cases} \tfrac{1}{2} k x^2 & |x| \le x_c \\ k x_c |x| - \tfrac{1}{2} k x_c^2 & |x| > x_c \end{cases}$$
+```math
+U(x) = \begin{cases}
+\tfrac{1}{2} k x^2 & |x| \le x_c \\
+k x_c |x| - \tfrac{1}{2} k x_c^2 & |x| > x_c
+\end{cases}
+```
 
 **`tail = "flat"`** (compact quartic damping) — the restoring force
 $-k x (1 - (x/x_c)^2)^2$ decays smoothly to zero at $x_c$ and stays zero beyond it
 (the bond softly releases); the energy plateaus at $k x_c^2 / 6$:
 
-$$U(x) = \begin{cases} \tfrac{1}{2} k x^2 \left(1 - s^2 + \tfrac{1}{3} s^4\right),\ s = x/x_c & |x| \le x_c \\ \tfrac{1}{6} k x_c^2 & |x| > x_c \end{cases}$$
+```math
+U(x) = \begin{cases}
+\tfrac{1}{2} k x^2 \left(1 - s^2 + \tfrac{1}{3} s^4\right),\ s = x/x_c & |x| \le x_c \\
+\tfrac{1}{6} k x_c^2 & |x| > x_c
+\end{cases}
+```
 
 The `"flat"` force is a single branch with no `exp`/`trig` — it is C¹ (force *and*
 its slope vanish at $x_c$), cheaper than a Gaussian well and smoother than a cosine
@@ -446,7 +456,7 @@ An **angle group** $(i, j, k)$ defines two geometric objects:
 2. The **target direction** from guide particle $j$ to guide particle $k$:
 
 $$\mathbf{d} = \mathbf{r}_k - \mathbf{r}_j, \qquad
-$$\hat{d} = \frac{\mathbf{d}}{\lvert\mathbf{d}\rvert}.$$
+\hat{d} = \frac{\mathbf{d}}{\lvert\mathbf{d}\rvert}.$$
 
 (Minimum-image convention is applied to $\mathbf{d}$ for periodic boundaries.)
 
