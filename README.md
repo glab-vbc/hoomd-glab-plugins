@@ -389,7 +389,7 @@ pipeline (configure → forces → Langevin → visualize) that shows the force'
 | notebook | force(s) | shows |
 |----------|----------|-------|
 | [`demo_soft_harmonic`](docs/demo_soft_harmonic.ipynb) | `SoftHarmonic` + `SoftHarmonicAngle` | thermal kinks, brittle-vs-ductile rupture, larger stable `dt` |
-| [`demo_cosine_angle`](docs/demo_cosine_angle.ipynb) | `CosineAngle` | worm-like-chain persistence length; bounded force & stiffness at collinear; per-joint `dt` spectrum |
+| [`demo_cosine_angle`](docs/demo_cosine_angle.ipynb) | `CosineAngle` | worm-like-chain persistence length; force/stiffness landscape; near-NVE kinetic-energy drift vs timestep |
 | [`demo_sinsq_dihedral`](docs/demo_sinsq_dihedral.ipynb) | `SinSqDihedral` | bounded forces near collinear; a helix; larger stable `dt` |
 | [`demo_external_patch`](docs/demo_external_patch.ipynb) | `ExternalPatch` | patchy self-assembly into dimers and filaments |
 | [`demo_align_angle`](docs/demo_align_angle.ipynb) | `DirectorAlign` | orientations order onto a polymer's local tangent |
