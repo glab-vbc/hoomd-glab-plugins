@@ -31,7 +31,7 @@ void export_CosineAngleForceComputeGPU(pybind11::module& m);
 
 using namespace hoomd::md::detail;
 
-PYBIND11_MODULE(_align_angle, m)
+PYBIND11_MODULE(_glab_forces, m)
     {
     export_AlignAngleForceCompute(m);
     export_AnisoPotentialPairNematic(m);

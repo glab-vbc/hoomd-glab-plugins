@@ -1,17 +1,17 @@
 # Copyright (c) 2025 Goloborodko Lab.
 # Released under the BSD 3-Clause License.
 
-"""Tests for the align_angle plugin.
+"""Tests for the glab_forces plugin.
 
 Run with: python -m pytest test_align_angle.py -v
-(requires HOOMD and align_angle to be installed)
+(requires HOOMD and glab_forces to be installed)
 """
 
 import hoomd
 import numpy as np
 import pytest
 
-from hoomd import align_angle
+from hoomd import glab_forces
 
 
 def make_snapshot_with_angles(device, positions, orientations, L=20.0):
@@ -43,7 +43,7 @@ class TestAlignAngleForce:
 
     def test_params(self, device):
         """Test setting and getting parameters."""
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         force.params["align"] = dict(k=10.0)
         assert force.params["align"]["k"] == pytest.approx(10.0)
 
@@ -61,7 +61,7 @@ class TestAlignAngleForce:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         force.params["align"] = dict(k=10.0)
 
         nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
@@ -87,7 +87,7 @@ class TestAlignAngleForce:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         k = 6.0
         force.params["align"] = dict(k=k)
 
@@ -117,7 +117,7 @@ class TestAlignAngleForce:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         k = 8.0
         force.params["align"] = dict(k=k)
 
@@ -145,7 +145,7 @@ class TestAlignAngleForce:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         force.params["align"] = dict(k=5.0)
 
         nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
@@ -172,7 +172,7 @@ class TestAlignAngleForce:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         force.params["align"] = dict(k=10.0)
 
         nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
@@ -205,7 +205,7 @@ class TestAlignAngleForce:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         force.params["align"] = dict(k=10.0)
 
         nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
@@ -223,7 +223,7 @@ class TestDirectorAlignMultiplicity:
 
     def test_params_multiplicity_phase(self, device):
         """Test setting and getting multiplicity and phase."""
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         force.params["align"] = dict(k=10.0, multiplicity=2, phase=1.5)
         assert force.params["align"]["k"] == pytest.approx(10.0)
         assert force.params["align"]["multiplicity"] == 2
@@ -240,7 +240,7 @@ class TestDirectorAlignMultiplicity:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         force.params["align"] = dict(k=10.0)  # no multiplicity/phase
 
         nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
@@ -261,7 +261,7 @@ class TestDirectorAlignMultiplicity:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         k = 10.0
         force.params["align"] = dict(k=k, multiplicity=2, phase=0.0)
 
@@ -284,7 +284,7 @@ class TestDirectorAlignMultiplicity:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         k = 10.0
         force.params["align"] = dict(k=k, multiplicity=2, phase=0.0)
 
@@ -309,7 +309,7 @@ class TestDirectorAlignMultiplicity:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         k = 8.0
         force.params["align"] = dict(k=k, multiplicity=2, phase=0.0)
 
@@ -334,7 +334,7 @@ class TestDirectorAlignMultiplicity:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         k = 6.0
         force.params["align"] = dict(k=k, multiplicity=1, phase=np.pi)
 
@@ -357,7 +357,7 @@ class TestDirectorAlignMultiplicity:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         k = 6.0
         force.params["align"] = dict(k=k, multiplicity=1, phase=np.pi)
 
@@ -382,7 +382,7 @@ class TestDirectorAlignMultiplicity:
         sim = hoomd.Simulation(device=device)
         sim.create_state_from_snapshot(snap)
 
-        force = align_angle.DirectorAlign()
+        force = glab_forces.DirectorAlign()
         force.params["align"] = dict(k=5.0, multiplicity=2, phase=0.0)
 
         nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
@@ -447,7 +447,7 @@ def _get_hoomd_results(device, positions, orientations, k, multiplicity=1, phase
     snap = make_snapshot_with_angles(device, positions, orientations)
     sim = hoomd.Simulation(device=device)
     sim.create_state_from_snapshot(snap)
-    force = align_angle.DirectorAlign()
+    force = glab_forces.DirectorAlign()
     force.params["align"] = dict(k=k, multiplicity=multiplicity, phase=phase)
     nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
     integrator = hoomd.md.Integrator(dt=0.001, methods=[nve], forces=[force])
@@ -576,7 +576,7 @@ def _run_equipartition(device, K, kT=1.0, dt=0.005, n_steps=40000, sample_every=
 
     sim = hoomd.Simulation(device=device, seed=seed)
     sim.create_state_from_snapshot(snap)
-    force = align_angle.DirectorAlign()
+    force = glab_forces.DirectorAlign()
     force.params["align"] = dict(k=K)
     # integrate only the oriented particle -> the guides (hence d_hat) stay fixed
     langevin = hoomd.md.methods.Langevin(filter=hoomd.filter.Type(["Oriented"]), kT=kT)

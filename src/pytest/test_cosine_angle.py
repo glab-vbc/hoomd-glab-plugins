@@ -10,7 +10,7 @@ geometry, unlike hoomd.md.angle.Harmonic.
 import numpy
 import pytest
 import hoomd
-from hoomd import align_angle
+from hoomd import glab_forces
 
 
 def _is_mixed_precision():
@@ -101,7 +101,7 @@ def _make_sim(device, snapshot, params):
     sim = hoomd.Simulation(device=device)
     sim.create_state_from_snapshot(snapshot)
     integrator = hoomd.md.Integrator(dt=0.0)
-    cosine = align_angle.CosineAngle()
+    cosine = glab_forces.CosineAngle()
     cosine.params["A-A-A"] = params
     integrator.forces.append(cosine)
     sim.operations.integrator = integrator
@@ -135,14 +135,14 @@ def _total_energy(force):
 
 class TestParams:
     def test_params_round_trip(self, device):
-        cosine = align_angle.CosineAngle()
+        cosine = glab_forces.CosineAngle()
         cosine.params["A-A-A"] = dict(k=7.0, t0=2.0)
         p = cosine.params["A-A-A"]
         assert p["k"] == pytest.approx(7.0)
         assert p["t0"] == pytest.approx(2.0)
 
     def test_default_t0_is_pi(self, device):
-        cosine = align_angle.CosineAngle()
+        cosine = glab_forces.CosineAngle()
         cosine.params["A-A-A"] = dict(k=7.0)
         assert cosine.params["A-A-A"]["t0"] == pytest.approx(numpy.pi)
 

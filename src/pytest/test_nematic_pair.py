@@ -15,7 +15,7 @@ import hoomd
 import numpy as np
 import pytest
 
-from hoomd import align_angle
+from hoomd import glab_forces
 
 
 def _is_mixed_precision():
@@ -59,7 +59,7 @@ def make_sim_with_nematic(device, snap, epsilon, r_cut, multiplicity=2, phase=0.
     sim.create_state_from_snapshot(snap)
 
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
-    nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=r_cut)
+    nematic = glab_forces.DirectorPair(nlist=nlist, default_r_cut=r_cut)
     nematic.params[("A", "A")] = dict(epsilon=epsilon, multiplicity=multiplicity, phase=phase)
 
     nve = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
@@ -341,7 +341,7 @@ class TestDirectorPairTorques:
         sim.create_state_from_snapshot(snap)
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
-        nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=r_cut)
+        nematic = glab_forces.DirectorPair(nlist=nlist, default_r_cut=r_cut)
         nematic.params[("A", "A")] = dict(epsilon=epsilon, multiplicity=2)
 
         # Fix positions, only integrate orientational DOF
@@ -580,7 +580,7 @@ class TestPolarMode:
         sim.create_state_from_snapshot(snap)
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
-        nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=r_cut)
+        nematic = glab_forces.DirectorPair(nlist=nlist, default_r_cut=r_cut)
         nematic.params[("A", "A")] = dict(epsilon=epsilon, multiplicity=1)
 
         langevin = hoomd.md.methods.Langevin(filter=hoomd.filter.All(), kT=0.0)

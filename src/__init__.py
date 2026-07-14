@@ -1,4 +1,4 @@
-"""Custom forces plugin for HOOMD-blue (``align_angle``).
+"""Custom forces plugin for HOOMD-blue (``glab_forces``).
 
 Provides seven forces (all CPU + GPU):
 
@@ -32,7 +32,7 @@ from hoomd.data.typeparam import TypeParameter
 from hoomd.data.parameterdicts import TypeParameterDict, ParameterDict
 from hoomd.md import _md
 
-from hoomd.align_angle import _align_angle
+from hoomd.glab_forces import _glab_forces
 
 
 class DirectorAlign(Angle):
@@ -69,7 +69,7 @@ class DirectorAlign(Angle):
 
     Example::
 
-        align = align_angle.DirectorAlign()
+        align = glab_forces.DirectorAlign()
         align.params["polymer"] = dict(k=10.0)
         sim.operations.integrator.forces.append(align)
 
@@ -90,7 +90,7 @@ class DirectorAlign(Angle):
     """
 
     _cpp_class_name = "AlignAngleForceCompute"
-    _ext_module = _align_angle
+    _ext_module = _glab_forces
 
     def __init__(self):
         super().__init__()
@@ -136,7 +136,7 @@ class SoftHarmonic(Bond):
 
     Example::
 
-        soft = align_angle.SoftHarmonic()
+        soft = glab_forces.SoftHarmonic()
         soft.params["A-A"] = dict(k=100.0, r0=1.0, x_c=0.5, tail="linear")
         sim.operations.integrator.forces.append(soft)
 
@@ -156,7 +156,7 @@ class SoftHarmonic(Bond):
     """
 
     _cpp_class_name = "PotentialBondSoftHarmonic"
-    _ext_module = _align_angle
+    _ext_module = _glab_forces
 
     def __init__(self):
         super().__init__()
@@ -189,7 +189,7 @@ class SoftHarmonicAngle(Angle):
 
     Example::
 
-        soft = align_angle.SoftHarmonicAngle()
+        soft = glab_forces.SoftHarmonicAngle()
         soft.params["A-A-A"] = dict(k=20.0, t0=numpy.pi, x_c=0.6, tail="flat")
         sim.operations.integrator.forces.append(soft)
 
@@ -209,7 +209,7 @@ class SoftHarmonicAngle(Angle):
     """
 
     _cpp_class_name = "SoftHarmonicAngleForceCompute"
-    _ext_module = _align_angle
+    _ext_module = _glab_forces
 
     def __init__(self):
         super().__init__()
@@ -256,7 +256,7 @@ class CosineAngle(Angle):
 
     Example::
 
-        cosine = align_angle.CosineAngle()
+        cosine = glab_forces.CosineAngle()
         cosine.params["A-A-A"] = dict(k=5.0)            # t0 defaults to pi (straight)
         sim.operations.integrator.forces.append(cosine)
 
@@ -271,7 +271,7 @@ class CosineAngle(Angle):
     """
 
     _cpp_class_name = "CosineAngleForceCompute"
-    _ext_module = _align_angle
+    _ext_module = _glab_forces
 
     def __init__(self):
         super().__init__()
@@ -318,7 +318,7 @@ class DirectorPair(AnisotropicPair):
     Example::
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
-        director = align_angle.DirectorPair(nlist=nlist, default_r_cut=3.0)
+        director = glab_forces.DirectorPair(nlist=nlist, default_r_cut=3.0)
 
         # Polar (default, multiplicity=1)
         director.params[("A", "A")] = dict(epsilon=5.0)
@@ -342,7 +342,7 @@ class DirectorPair(AnisotropicPair):
     """
 
     _cpp_class_name = "AnisoPotentialPairNematic"
-    _ext_module = _align_angle
+    _ext_module = _glab_forces
 
     def __init__(self, nlist, default_r_cut=None, mode="none"):
         super().__init__(nlist, default_r_cut, mode)
@@ -379,7 +379,7 @@ class SinSqDihedral(Dihedral):
 
     Example::
 
-        sinsq = align_angle.SinSqDihedral()
+        sinsq = glab_forces.SinSqDihedral()
         sinsq.params["A-A-A-A"] = dict(k=10.0, d=1, n=1, phi0=0)
         sim.operations.integrator.forces.append(sinsq)
 
@@ -397,7 +397,7 @@ class SinSqDihedral(Dihedral):
     """
 
     _cpp_class_name = "SinSqDihedralForceCompute"
-    _ext_module = _align_angle
+    _ext_module = _glab_forces
 
     def __init__(self):
         super().__init__()
@@ -450,7 +450,7 @@ class ExternalPatch(Force):
     Example::
 
         nlist = hoomd.md.nlist.Cell(buffer=0.4)
-        patch = align_angle.ExternalPatch(nlist=nlist, r_cut=3.0)
+        patch = glab_forces.ExternalPatch(nlist=nlist, r_cut=3.0)
         patch.epsilon = 5.0
         patch.width = 0.5
         patch.partners = [(0, 1), (2, 3)]
@@ -458,7 +458,7 @@ class ExternalPatch(Force):
     """
 
     _cpp_class_name = "ExternalPatchForceCompute"
-    _ext_module = _align_angle
+    _ext_module = _glab_forces
 
     def __init__(self, nlist, r_cut):
         super().__init__()

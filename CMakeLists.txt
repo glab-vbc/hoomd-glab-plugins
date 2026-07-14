@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9 FATAL_ERROR)
-project(align_angle LANGUAGES CXX)
+project(glab_forces LANGUAGES CXX)
 
 find_package(HOOMD REQUIRED)
 message(STATUS "Found HOOMD: ${HOOMD_DIR}")

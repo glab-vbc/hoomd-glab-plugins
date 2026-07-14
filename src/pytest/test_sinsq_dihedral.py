@@ -4,7 +4,7 @@ import itertools
 import numpy
 import pytest
 import hoomd
-from hoomd import align_angle
+from hoomd import glab_forces
 
 
 def _is_mixed_precision():
@@ -59,7 +59,7 @@ def _make_sim(device, snapshot, params):
     sim = hoomd.Simulation(device=device)
     sim.create_state_from_snapshot(snapshot)
     integrator = hoomd.md.Integrator(dt=0.0)
-    sinsq = align_angle.SinSqDihedral()
+    sinsq = glab_forces.SinSqDihedral()
     sinsq.params["ABCD"] = params
     integrator.forces.append(sinsq)
     sim.operations.integrator = integrator
@@ -180,7 +180,7 @@ class TestSinSqDihedralParams:
     """Parameter round-trip tests."""
 
     def test_params_before_attach(self, device):
-        sinsq = align_angle.SinSqDihedral()
+        sinsq = glab_forces.SinSqDihedral()
         sinsq.params["ABCD"] = dict(k=3.0, d=-1, n=2, phi0=1.5)
         p = sinsq.params["ABCD"]
         assert p["k"] == pytest.approx(3.0)

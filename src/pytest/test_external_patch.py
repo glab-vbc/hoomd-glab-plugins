@@ -14,7 +14,7 @@ import sys
 import numpy as np
 import pytest
 import hoomd
-from hoomd import align_angle
+from hoomd import glab_forces
 
 
 def _gpu_available():
@@ -130,7 +130,7 @@ def make_sim(positions, partners, epsilon=5.0, width=0.5,
     sim.create_state_from_snapshot(snap)
 
     nlist = hoomd.md.nlist.Cell(buffer=0.4)
-    patch = align_angle.ExternalPatch(nlist=nlist, r_cut=r_cut)
+    patch = glab_forces.ExternalPatch(nlist=nlist, r_cut=r_cut)
     patch.epsilon = epsilon
     patch.width   = width
     patch.partners = partners

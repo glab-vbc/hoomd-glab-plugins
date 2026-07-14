@@ -1,4 +1,4 @@
-set(COMPONENT_NAME align_angle)
+set(COMPONENT_NAME glab_forces)
 
 set(_${COMPONENT_NAME}_sources
     module.cc
@@ -92,13 +92,13 @@ if (HOOMD_MATH_HEADER)
     string(FIND "${_hoomd_math_src}" "define HOOMD_HAS_FORCEREAL" _fr_macro_pos)
     if (NOT _fr_type_pos EQUAL -1 AND _fr_macro_pos EQUAL -1)
         message(STATUS
-            "align_angle: HOOMD provides native ForceReal without HOOMD_HAS_FORCEREAL; defining it")
+            "glab_forces: HOOMD provides native ForceReal without HOOMD_HAS_FORCEREAL; defining it")
         target_compile_definitions(_${COMPONENT_NAME} PRIVATE HOOMD_HAS_FORCEREAL)
     endif()
     unset(_hoomd_math_src)
 else()
     message(WARNING
-        "align_angle: could not locate hoomd/HOOMDMath.h to probe for native ForceReal; "
+        "glab_forces: could not locate hoomd/HOOMDMath.h to probe for native ForceReal; "
         "if the build fails with a conflicting 'ForceReal' typedef, configure with "
         "-DCMAKE_CXX_FLAGS=-DHOOMD_HAS_FORCEREAL -DCMAKE_CUDA_FLAGS=-DHOOMD_HAS_FORCEREAL")
 endif()

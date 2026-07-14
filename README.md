@@ -65,9 +65,9 @@ ramp.
 ### Usage
 
 ```python
-from hoomd import align_angle
+from hoomd import glab_forces
 
-soft = align_angle.SoftHarmonic()
+soft = glab_forces.SoftHarmonic()
 soft.params["A-A"] = dict(k=100.0, r0=1.0, x_c=0.5, tail="linear")  # or "flat"
 
 integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
@@ -100,9 +100,9 @@ sharing the curvature $U''(0) = k$.
 
 ```python
 import numpy
-from hoomd import align_angle
+from hoomd import glab_forces
 
-soft = align_angle.SoftHarmonicAngle()
+soft = glab_forces.SoftHarmonicAngle()
 soft.params["A-A-A"] = dict(k=20.0, t0=numpy.pi, x_c=0.6, tail="flat")  # or "linear"
 
 integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
@@ -156,9 +156,9 @@ singularity-free form.
 ### Usage
 
 ```python
-from hoomd import align_angle
+from hoomd import glab_forces
 
-cosine = align_angle.CosineAngle()
+cosine = glab_forces.CosineAngle()
 cosine.params["A-A-A"] = dict(k=5.0)              # t0 defaults to pi (straight)
 
 integrator = hoomd.md.Integrator(dt=0.02, methods=[...], forces=[cosine])
@@ -209,9 +209,9 @@ and any system where backbone bending allows near-collinear configurations.
 
 ```python
 import hoomd
-from hoomd import align_angle
+from hoomd import glab_forces
 
-sinsq = align_angle.SinSqDihedral()
+sinsq = glab_forces.SinSqDihedral()
 # d=-1 → minimum at φ=0 (cis); d=+1 → minimum at φ=π (trans)
 sinsq.params["backbone"] = dict(k=5.0, d=-1, n=1, phi0=0)
 
@@ -268,10 +268,10 @@ particles — no rotational DOFs are required.
 ### Usage
 
 ```python
-from hoomd import align_angle
+from hoomd import glab_forces
 
 nlist = hoomd.md.nlist.Cell(buffer=0.4)
-patch = align_angle.ExternalPatch(nlist=nlist, r_cut=3.0)
+patch = glab_forces.ExternalPatch(nlist=nlist, r_cut=3.0)
 patch.epsilon = 5.0
 patch.width = 0.5
 patch.partners = [(0, 1), (2, 3)]   # (attractor_tag, director_tag) pairs
@@ -312,9 +312,9 @@ With the defaults this reduces to $U = \frac{K}{2}(1 - \hat{n}\cdot\hat{d})$.
 
 ```python
 import hoomd
-from hoomd import align_angle
+from hoomd import glab_forces
 
-align_force = align_angle.DirectorAlign()
+align_force = glab_forces.DirectorAlign()
 align_force.params["align"] = dict(k=20.0)  # polar (default)
 
 # Nematic (head-tail symmetric) alignment:
@@ -357,16 +357,16 @@ energy vanish continuously at the cutoff.
 ### Usage
 
 ```python
-from hoomd import align_angle
+from hoomd import glab_forces
 
 nlist = hoomd.md.nlist.Cell(buffer=0.4)
 
 # Polar coupling (default, multiplicity=1):
-polar = align_angle.DirectorPair(nlist=nlist, default_r_cut=1.5)
+polar = glab_forces.DirectorPair(nlist=nlist, default_r_cut=1.5)
 polar.params[("A", "A")] = dict(epsilon=4.0)
 
 # Nematic coupling (multiplicity=2):
-nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=1.5)
+nematic = glab_forces.DirectorPair(nlist=nlist, default_r_cut=1.5)
 nematic.params[("A", "A")] = dict(epsilon=4.0, multiplicity=2)
 
 integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[nematic])

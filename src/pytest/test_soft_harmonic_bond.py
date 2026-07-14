@@ -3,7 +3,7 @@
 import numpy
 import pytest
 import hoomd
-from hoomd import align_angle
+from hoomd import glab_forces
 
 
 def _is_mixed_precision():
@@ -80,7 +80,7 @@ def _make_sim(device, snapshot, params):
     sim = hoomd.Simulation(device=device)
     sim.create_state_from_snapshot(snapshot)
     integrator = hoomd.md.Integrator(dt=0.0)
-    soft = align_angle.SoftHarmonic()
+    soft = glab_forces.SoftHarmonic()
     soft.params["A-A"] = params
     integrator.forces.append(soft)
     sim.operations.integrator = integrator
@@ -104,7 +104,7 @@ def _total_energy(sim):
 
 class TestParams:
     def test_params_round_trip(self, device):
-        soft = align_angle.SoftHarmonic()
+        soft = glab_forces.SoftHarmonic()
         soft.params["A-A"] = dict(k=100.0, r0=1.0, x_c=0.5, tail="flat")
         p = soft.params["A-A"]
         assert p["k"] == pytest.approx(100.0)
