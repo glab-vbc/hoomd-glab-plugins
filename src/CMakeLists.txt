@@ -8,6 +8,7 @@ set(_${COMPONENT_NAME}_sources
     SinSqDihedralForceCompute.cc
     SoftHarmonicBond.cc
     SoftHarmonicAngleForceCompute.cc
+    CosineAngleForceCompute.cc
     )
 
 set(_${COMPONENT_NAME}_headers
@@ -18,6 +19,7 @@ set(_${COMPONENT_NAME}_headers
     SinSqDihedralForceCompute.h
     SoftHarmonicTail.h
     SoftHarmonicAngleForceCompute.h
+    CosineAngleForceCompute.h
     )
 
 if (ENABLE_HIP)
@@ -28,6 +30,7 @@ if (ENABLE_HIP)
          SinSqDihedralForceComputeGPU.cc
          SoftHarmonicBondGPU.cc
          SoftHarmonicAngleForceComputeGPU.cc
+         CosineAngleForceComputeGPU.cc
          )
     list(APPEND _${COMPONENT_NAME}_headers
          AlignAngleForceComputeGPU.h
@@ -38,6 +41,8 @@ if (ENABLE_HIP)
          SinSqDihedralForceGPU.cuh
          SoftHarmonicAngleForceComputeGPU.h
          SoftHarmonicAngleForceGPU.cuh
+         CosineAngleForceComputeGPU.h
+         CosineAngleForceGPU.cuh
          )
     set(_${COMPONENT_NAME}_cu_sources
         AlignAngleForceGPU.cu
@@ -46,6 +51,7 @@ if (ENABLE_HIP)
         SinSqDihedralForceGPU.cu
         SoftHarmonicBondGPU.cu
         SoftHarmonicAngleForceGPU.cu
+        CosineAngleForceGPU.cu
         )
     set_source_files_properties(${_${COMPONENT_NAME}_cu_sources}
         PROPERTIES LANGUAGE ${HOOMD_DEVICE_LANGUAGE})

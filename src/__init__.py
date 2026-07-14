@@ -1,6 +1,6 @@
 """Custom forces plugin for HOOMD-blue (``align_angle``).
 
-Provides six forces (all CPU + GPU):
+Provides seven forces (all CPU + GPU):
 
 * ``DirectorAlign`` — an angle force that aligns an oriented particle's
   body-frame x-axis to the direction defined by two guide particles.
@@ -11,11 +11,16 @@ Provides six forces (all CPU + GPU):
 * ``SoftHarmonic`` — a harmonic bond whose tail saturates to a constant force
   (``tail="linear"``) or releases to zero force (``tail="flat"``).
 * ``SoftHarmonicAngle`` — the same saturating harmonic well for an angle.
+* ``CosineAngle`` — the worm-like-chain bending potential
+  ``U = k(1 − cos(θ − t0))`` (default ``t0 = π``); its stiffness stays bounded
+  at collinear geometry, where the harmonic angle's diverges.
 * ``ExternalPatch`` — a patch interaction with externally defined patch
   directions (no quaternion DOFs required).
 """
 
 import copy
+
+import numpy
 
 import hoomd
 from hoomd.md.angle import Angle
@@ -212,6 +217,68 @@ class SoftHarmonicAngle(Angle):
             "params",
             "angle_types",
             TypeParameterDict(k=float, t0=float, x_c=float, tail="flat", len_keys=1),
+        )
+        self._add_typeparam(params)
+
+
+class CosineAngle(Angle):
+    r"""Cosine (worm-like-chain) bending angle force.
+
+    `CosineAngle` is the standard worm-like-chain / "negative-cosine" bending
+    potential
+
+    .. math::
+
+        U(\theta) = k\,\bigl(1 - \cos(\theta - t_0)\bigr),
+
+    with :math:`\theta` the angle at the central particle and :math:`t_0` the
+    preferred angle (default :math:`\pi`, i.e. straight; there it equals
+    :math:`k(1 + \cos\theta)`). The minimum is at :math:`\theta = t_0`, the
+    curvature there is :math:`U''(t_0) = k` (so ``k`` matches the harmonic
+    angle's stiffness in the small-deviation limit), and the energy is bounded
+    in :math:`[0, 2k]`.
+
+    The Cartesian force prefactor
+    :math:`a = \mathrm{d}U/\mathrm{d}(\cos\theta) = -k\cos t_0 + k\sin t_0\,
+    (\cos\theta/\sin\theta)` has its singular :math:`1/\sin\theta` piece gated by
+    :math:`\sin t_0`. For the worm-like-chain cases :math:`t_0 \in \{0, \pi\}`
+    this piece vanishes and :math:`a = \mp k` is *constant*. The actual force
+    magnitude, :math:`|a|\sin\theta/r`, is bounded for the harmonic angle too
+    (the :math:`1/\sin\theta` cancels); what `CosineAngle` keeps bounded is the
+    **stiffness** (the Hessian / force constant, which diverges as
+    :math:`\sim 1/\theta` toward a fold for the harmonic angle and sets the
+    stable timestep). A fold-sampling chain therefore tolerates a somewhat larger
+    timestep with `CosineAngle`; a stiff (rarely-folding) chain sees no
+    difference. For an arbitrary preferred angle :math:`t_0 \notin \{0, \pi\}`
+    the collinear-endpoint stiffness is finite but no longer singularity-free;
+    `hoomd.md.angle.CosineSquared` is the alternative route to an
+    arbitrary-:math:`t_0` singularity-free form.
+
+    Example::
+
+        cosine = align_angle.CosineAngle()
+        cosine.params["A-A-A"] = dict(k=5.0)            # t0 defaults to pi (straight)
+        sim.operations.integrator.forces.append(cosine)
+
+    Attributes:
+        params (TypeParameter[``angle type``, dict]):
+            The parameters for each angle type, with keys:
+
+            * ``k`` (`float`, **required**) - stiffness
+              :math:`[\mathrm{energy} \cdot \mathrm{radian}^{-2}]`
+            * ``t0`` (`float`, **optional**, default :math:`\pi`) - preferred
+              angle :math:`[\mathrm{radian}]`
+    """
+
+    _cpp_class_name = "CosineAngleForceCompute"
+    _ext_module = _align_angle
+
+    def __init__(self):
+        super().__init__()
+        params = TypeParameter(
+            "params",
+            "angle_types",
+            TypeParameterDict(k=float, t0=numpy.pi, len_keys=1),
         )
         self._add_typeparam(params)
 

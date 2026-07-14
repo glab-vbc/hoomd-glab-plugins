@@ -5,13 +5,14 @@ generated with the assistance of AI (GitHub Copilot). It may contain errors.
 Please verify the formulas and implementation against your own understanding
 before using in production.**
 
-A [HOOMD-blue](https://hoomd-blue.readthedocs.io/) plugin providing six custom
+A [HOOMD-blue](https://hoomd-blue.readthedocs.io/) plugin providing seven custom
 forces for bonded-interaction and anisotropic simulations, all running on **CPU
 and GPU** (HIP/CUDA). Jump to a force:
 
 **Bonded / topological — the everyday forces:**
 - [**`SoftHarmonic`** — saturating / breakable harmonic bond](#softharmonic-bond)
 - [**`SoftHarmonicAngle`** — saturating harmonic angle](#softharmonicangle-angle)
+- [**`CosineAngle`** — worm-like-chain bending (bounded stiffness)](#cosineangle-worm-like-chain-bending)
 - [**`SinSqDihedral`** — singularity-free dihedral](#sinsqdihedral-singularity-free-dihedral)
 
 **Patchy self-assembly:**
@@ -115,6 +116,57 @@ integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
 | `t0` | float | — | Equilibrium angle $[\mathrm{radian}]$ |
 | `x_c` | float | — | Crossover deviation $[\mathrm{radian}]$, must be $> 0$ |
 | `tail` | str | `"flat"` | `"flat"` (torque releases to 0) or `"linear"` (constant-torque cap) |
+
+---
+
+## CosineAngle (worm-like-chain bending)
+
+### Physics
+
+The standard worm-like-chain / "negative-cosine" bending potential,
+
+```math
+U(\theta) = k \left(1 - \cos(\theta - t_0)\right)
+```
+
+with preferred angle $t_0$ (default $\pi$ = straight, where it equals $k(1+\cos\theta)$). The
+minimum is at $\theta = t_0$, the curvature there is $U''(t_0) = k$ (matching the harmonic
+angle's stiffness in the small-deformation limit), and the energy is bounded in $[0, 2k]$. For
+$t_0 = \pi$ the discrete-chain persistence length is $L_p \approx (k/k_BT)\,b$ in the stiff limit.
+
+The Cartesian force prefactor is
+
+```math
+a = \frac{\mathrm{d}U}{\mathrm{d}(\cos\theta)} = -k\cos t_0 + k\sin t_0 \frac{\cos\theta}{\sin\theta},
+```
+
+whose singular $1/\sin\theta$ piece is **gated by $\sin t_0$**: for the worm-like-chain cases
+$t_0 \in \{0, \pi\}$ it vanishes and $a = \mp k$ is *constant*. Note that the actual **force**
+magnitude, $|a|\sin\theta/r$, is bounded for the harmonic angle too — the $1/\sin\theta$ is
+cancelled by the geometry. What `CosineAngle` keeps bounded (and the harmonic angle does not) is
+the **stiffness** (the Hessian / force constant, which diverges as $\sim 1/\theta$ toward a fold
+and sets the stable timestep). A fold-prone chain therefore tolerates a somewhat larger timestep;
+a stiff (rarely-folding) chain sees no difference. For an arbitrary preferred angle
+$t_0 \notin \{0, \pi\}$ the collinear-endpoint stiffness is finite but no longer singularity-free —
+use `hoomd.md.angle.CosineSquared` for an arbitrary-$t_0$ singularity-free form.
+
+### Usage
+
+```python
+from hoomd import align_angle
+
+cosine = align_angle.CosineAngle()
+cosine.params["A-A-A"] = dict(k=5.0)              # t0 defaults to pi (straight)
+
+integrator = hoomd.md.Integrator(dt=0.02, methods=[...], forces=[cosine])
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `k` | float | — | Stiffness $[\mathrm{energy}\cdot\mathrm{radian}^{-2}]$ |
+| `t0` | float | $\pi$ | Preferred angle $[\mathrm{radian}]$ |
 
 ---
 
@@ -337,6 +389,7 @@ pipeline (configure → forces → Langevin → visualize) that shows the force'
 | notebook | force(s) | shows |
 |----------|----------|-------|
 | [`demo_soft_harmonic`](docs/demo_soft_harmonic.ipynb) | `SoftHarmonic` + `SoftHarmonicAngle` | thermal kinks, brittle-vs-ductile rupture, larger stable `dt` |
+| [`demo_cosine_angle`](docs/demo_cosine_angle.ipynb) | `CosineAngle` | worm-like-chain persistence length; bounded force & stiffness at collinear; per-joint `dt` spectrum |
 | [`demo_sinsq_dihedral`](docs/demo_sinsq_dihedral.ipynb) | `SinSqDihedral` | bounded forces near collinear; a helix; larger stable `dt` |
 | [`demo_external_patch`](docs/demo_external_patch.ipynb) | `ExternalPatch` | patchy self-assembly into dimers and filaments |
 | [`demo_align_angle`](docs/demo_align_angle.ipynb) | `DirectorAlign` | orientations order onto a polymer's local tangent |
