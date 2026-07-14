@@ -145,10 +145,13 @@ $t_0 \in \{0, \pi\}$ it vanishes and $a = \mp k$ is *constant*. Note that the ac
 magnitude, $|a|\sin\theta/r$, is bounded for the harmonic angle too — the $1/\sin\theta$ is
 cancelled by the geometry. What `CosineAngle` keeps bounded (and the harmonic angle does not) is
 the **stiffness** (the Hessian / force constant, which diverges as $\sim 1/\theta$ toward a fold
-and sets the stable timestep). A fold-prone chain therefore tolerates a somewhat larger timestep;
-a stiff (rarely-folding) chain sees no difference. For an arbitrary preferred angle
-$t_0 \notin \{0, \pi\}$ the collinear-endpoint stiffness is finite but no longer singularity-free —
-use `hoomd.md.angle.CosineSquared` for an arbitrary-$t_0$ singularity-free form.
+and sets the stable timestep). A fold-prone chain therefore tolerates a **modestly** larger
+timestep — but only when the chain actually samples folds and a weak thermostat lets the harmonic
+angle's energy pumping show; a stiff (rarely-folding) or strongly-damped chain sees no difference
+(see [`demo_cosine_angle`](docs/demo_cosine_angle.ipynb) for a near-NVE measurement). For an
+arbitrary preferred angle $t_0 \notin \{0, \pi\}$ the collinear-endpoint stiffness is finite but no
+longer singularity-free — use `hoomd.md.angle.CosineSquared` for an arbitrary-$t_0$
+singularity-free form.
 
 ### Usage
 
