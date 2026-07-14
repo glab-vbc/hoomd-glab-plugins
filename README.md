@@ -5,122 +5,120 @@ generated with the assistance of AI (GitHub Copilot). It may contain errors.
 Please verify the formulas and implementation against your own understanding
 before using in production.**
 
-A [HOOMD-blue](https://hoomd-blue.readthedocs.io/) plugin providing six
-custom forces for anisotropic and bonded-interaction simulations:
+A [HOOMD-blue](https://hoomd-blue.readthedocs.io/) plugin providing six custom
+forces for bonded-interaction and anisotropic simulations, all running on **CPU
+and GPU** (HIP/CUDA). Jump to a force:
 
-1. **`DirectorAlign`** — aligns a particle's body axis to a direction defined by two
-   guide particles (angle topology).
-2. **`DirectorPair`** — an anisotropic pair potential that couples neighbouring
-   particle orientations (nematic or polar symmetry).
-3. **`SinSqDihedral`** — a **singularity-free** dihedral potential that multiplies
-   the standard periodic torsion by sin²θ₁ sin²θ₂, smoothly sending forces to
-   zero at collinear geometries.
-4. **`SoftHarmonic`** — a harmonic **bond** whose tail saturates: a constant-force
-   cap (`"linear"`) or a smooth release to zero force (`"flat"`).
-5. **`SoftHarmonicAngle`** — the same saturating harmonic well for an **angle**
-   (capped restoring torque, or a free hinge past a threshold).
-6. **`ExternalPatch`** — a patchy attraction with externally defined patch
-   directions (no quaternion DOFs), acting through a neighbour list.
+**Bonded / topological — the everyday forces:**
+- [**`SoftHarmonic`** — saturating / breakable harmonic bond](#softharmonic-bond)
+- [**`SoftHarmonicAngle`** — saturating harmonic angle](#softharmonicangle-angle)
+- [**`SinSqDihedral`** — singularity-free dihedral](#sinsqdihedral-singularity-free-dihedral)
 
-All forces run on **CPU and GPU** (HIP/CUDA).
+**Patchy self-assembly:**
+- [**`ExternalPatch`** — directional patchy attraction (no quaternion DOFs)](#externalpatch-patchy-attraction)
+
+**Orientation-coupled — require rotational degrees of freedom:**
+- [**`DirectorAlign`** — align a body axis to two guide particles](#directoralign-angle-force)
+- [**`DirectorPair`** — orientation-coupling pair potential (nematic / polar)](#directorpair-anisotropic-pair-potential)
 
 ---
 
-## 1. DirectorAlign (angle force)
+## SoftHarmonic (bond)
 
 ### Physics
 
-For an angle group `(i, j, k)`:
-- Particle `i` is the **oriented** particle whose body-frame x-axis `n̂ = rotate(q_i, x̂)`
-  should align with the target direction.
-- Particles `j` and `k` are **guide** particles that define the target direction
-  `d̂ = (r_k − r_j) / |r_k − r_j|`.
+A harmonic bond that stays quadratic near the rest length but **saturates** in the
+tail, so an over-stretched bond neither produces a runaway force nor stays
+infinitely stiff. With signed deviation $x = r - r_0$ and crossover $x_c > 0$, both
+tail modes share the same curvature at the minimum ($U''(0) = k$), so `k` keeps its
+usual harmonic meaning and switching `tail` does not change the small-deformation
+physics.
 
-The potential energy is:
+**`tail = "linear"`** (Huber / capped) — exactly harmonic inside $x_c$, then a
+constant restoring force $k\,x_c$ (the bond never releases):
 
-$$U = \frac{K}{2}\bigl(1 - \cos(m \theta + \varphi_0)\bigr), \quad \theta = \arccos(\hat{n} \cdot \hat{d})$$
-
-where $m$ is `multiplicity` (default 1) and $\varphi_0$ is `phase` (default 0).
-With the defaults this reduces to $U = \frac{K}{2}(1 - \hat{n}\cdot\hat{d})$.
-
-![DirectorAlign alignment energy vs director angle](docs/figures/directoralign.png)
-
-### Usage
-
-```python
-import hoomd
-from hoomd import align_angle
-
-align_force = align_angle.DirectorAlign()
-align_force.params["align"] = dict(k=20.0)  # polar (default)
-
-# Nematic (head-tail symmetric) alignment:
-align_force.params["align"] = dict(k=20.0, multiplicity=2)
-
-integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[align_force])
-integrator.integrate_rotational_dof = True  # required!
+```math
+U(x) = \begin{cases}
+\tfrac{1}{2} k x^2 & |x| \le x_c \\
+k x_c |x| - \tfrac{1}{2} k x_c^2 & |x| > x_c
+\end{cases}
 ```
 
----
+**`tail = "flat"`** (compact quartic damping) — the restoring force
+$-k x (1 - (x/x_c)^2)^2$ decays smoothly to zero at $x_c$ and stays zero beyond it
+(the bond softly releases); the energy plateaus at $k x_c^2 / 6$:
 
-## 2. DirectorPair (anisotropic pair potential)
+```math
+U(x) = \begin{cases}
+\tfrac{1}{2} k x^2 \left(1 - s^2 + \tfrac{1}{3} s^4\right),\ s = x/x_c & |x| \le x_c \\
+\tfrac{1}{6} k x_c^2 & |x| > x_c
+\end{cases}
+```
 
-### Physics
+The `"flat"` force is a single branch with no `exp`/`trig` — it is C¹ (force *and*
+its slope vanish at $x_c$), cheaper than a Gaussian well and smoother than a cosine
+ramp.
 
-An orientation-dependent pair potential between particles within a cutoff
-distance $r_c$:
-
-$$U_{ij} = -\varepsilon \cos(m \alpha + \varphi_0) g(r)$$
-
-with the smooth compact envelope
-
-$$g(r) = \left(1 - \frac{r^2}{r_c^2}\right)^2$$
-
-where $\alpha = \arccos(\hat{n}_i \cdot \hat{n}_j)$ is the angle between the
-particle directors, $\hat{n} = \mathrm{rotate}(q, \hat{x})$ is each particle's
-body-frame x-axis rotated into the lab frame, $m$ is `multiplicity` (default 1),
-and $\varphi_0$ is `phase` (default 0).
-
-| `multiplicity` | Symmetry | Minimum energy configuration |
-|----------------|----------|------------------------------|
-| 1 (default) | **Polar** | parallel only ($\alpha = 0$) |
-| 2 | **Nematic** | parallel *or* anti-parallel ($\alpha = 0$ or $\pi$) |
-
-The smooth compact envelope $g(r) = (1 - r^2/r_c^2)^2$ ensures both force and
-energy vanish continuously at the cutoff.
-
-![DirectorPair angular part and radial envelope](docs/figures/directorpair.png)
+![SoftHarmonic bond energy and restoring force](docs/figures/softharmonic_bond.png)
 
 ### Usage
 
 ```python
 from hoomd import align_angle
 
-nlist = hoomd.md.nlist.Cell(buffer=0.4)
+soft = align_angle.SoftHarmonic()
+soft.params["A-A"] = dict(k=100.0, r0=1.0, x_c=0.5, tail="linear")  # or "flat"
 
-# Polar coupling (default, multiplicity=1):
-polar = align_angle.DirectorPair(nlist=nlist, default_r_cut=1.5)
-polar.params[("A", "A")] = dict(epsilon=4.0)
-
-# Nematic coupling (multiplicity=2):
-nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=1.5)
-nematic.params[("A", "A")] = dict(epsilon=4.0, multiplicity=2)
-
-integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[nematic])
-integrator.integrate_rotational_dof = True  # required!
+integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
 ```
 
 ### Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `epsilon` | float | — | Coupling strength $\varepsilon$ |
-| `multiplicity` | int | 1 | Angular multiplicity $m$ (1 = polar, 2 = nematic) |
-| `phase` | float | 0 | Phase offset $\varphi_0$ in radians |
+| `k` | float | — | Stiffness $[\mathrm{energy}\cdot\mathrm{length}^{-2}]$ |
+| `r0` | float | — | Rest length $[\mathrm{length}]$ |
+| `x_c` | float | — | Crossover deviation $[\mathrm{length}]$, must be $> 0$ |
+| `tail` | str | `"linear"` | `"linear"` (constant-force cap) or `"flat"` (force releases to 0) |
 
 ---
 
-## 3. SinSqDihedral (singularity-free dihedral)
+## SoftHarmonicAngle (angle)
+
+### Physics
+
+The same saturating harmonic well applied to a bond **angle**: quadratic about the
+equilibrium angle $t_0$, with a tail that either caps the restoring torque
+(`"linear"`) or releases it to zero past a threshold (`"flat"` — a free hinge). The
+piecewise energy is identical to `SoftHarmonic` ([above](#softharmonic-bond)) with $x = \theta - t_0$, again
+sharing the curvature $U''(0) = k$.
+
+![SoftHarmonicAngle energy vs bond angle](docs/figures/softharmonic_angle.png)
+
+### Usage
+
+```python
+import numpy
+from hoomd import align_angle
+
+soft = align_angle.SoftHarmonicAngle()
+soft.params["A-A-A"] = dict(k=20.0, t0=numpy.pi, x_c=0.6, tail="flat")  # or "linear"
+
+integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `k` | float | — | Stiffness $[\mathrm{energy}\cdot\mathrm{radian}^{-2}]$ |
+| `t0` | float | — | Equilibrium angle $[\mathrm{radian}]$ |
+| `x_c` | float | — | Crossover deviation $[\mathrm{radian}]$, must be $> 0$ |
+| `tail` | str | `"flat"` | `"flat"` (torque releases to 0) or `"linear"` (constant-torque cap) |
+
+---
+
+## SinSqDihedral (singularity-free dihedral)
 
 ### Physics
 
@@ -188,102 +186,7 @@ See [`docs/demo_sinsq_dihedral.ipynb`](docs/demo_sinsq_dihedral.ipynb) for:
 
 ---
 
-## 4. SoftHarmonic (bond)
-
-### Physics
-
-A harmonic bond that stays quadratic near the rest length but **saturates** in the
-tail, so an over-stretched bond neither produces a runaway force nor stays
-infinitely stiff. With signed deviation $x = r - r_0$ and crossover $x_c > 0$, both
-tail modes share the same curvature at the minimum ($U''(0) = k$), so `k` keeps its
-usual harmonic meaning and switching `tail` does not change the small-deformation
-physics.
-
-**`tail = "linear"`** (Huber / capped) — exactly harmonic inside $x_c$, then a
-constant restoring force $k\,x_c$ (the bond never releases):
-
-```math
-U(x) = \begin{cases}
-\tfrac{1}{2} k x^2 & |x| \le x_c \\
-k x_c |x| - \tfrac{1}{2} k x_c^2 & |x| > x_c
-\end{cases}
-```
-
-**`tail = "flat"`** (compact quartic damping) — the restoring force
-$-k x (1 - (x/x_c)^2)^2$ decays smoothly to zero at $x_c$ and stays zero beyond it
-(the bond softly releases); the energy plateaus at $k x_c^2 / 6$:
-
-```math
-U(x) = \begin{cases}
-\tfrac{1}{2} k x^2 \left(1 - s^2 + \tfrac{1}{3} s^4\right),\ s = x/x_c & |x| \le x_c \\
-\tfrac{1}{6} k x_c^2 & |x| > x_c
-\end{cases}
-```
-
-The `"flat"` force is a single branch with no `exp`/`trig` — it is C¹ (force *and*
-its slope vanish at $x_c$), cheaper than a Gaussian well and smoother than a cosine
-ramp.
-
-![SoftHarmonic bond energy and restoring force](docs/figures/softharmonic_bond.png)
-
-### Usage
-
-```python
-from hoomd import align_angle
-
-soft = align_angle.SoftHarmonic()
-soft.params["A-A"] = dict(k=100.0, r0=1.0, x_c=0.5, tail="linear")  # or "flat"
-
-integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
-```
-
-### Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `k` | float | — | Stiffness $[\mathrm{energy}\cdot\mathrm{length}^{-2}]$ |
-| `r0` | float | — | Rest length $[\mathrm{length}]$ |
-| `x_c` | float | — | Crossover deviation $[\mathrm{length}]$, must be $> 0$ |
-| `tail` | str | `"linear"` | `"linear"` (constant-force cap) or `"flat"` (force releases to 0) |
-
----
-
-## 5. SoftHarmonicAngle (angle)
-
-### Physics
-
-The same saturating harmonic well applied to a bond **angle**: quadratic about the
-equilibrium angle $t_0$, with a tail that either caps the restoring torque
-(`"linear"`) or releases it to zero past a threshold (`"flat"` — a free hinge). The
-piecewise energy is identical to `SoftHarmonic` (§4) with $x = \theta - t_0$, again
-sharing the curvature $U''(0) = k$.
-
-![SoftHarmonicAngle energy vs bond angle](docs/figures/softharmonic_angle.png)
-
-### Usage
-
-```python
-import numpy
-from hoomd import align_angle
-
-soft = align_angle.SoftHarmonicAngle()
-soft.params["A-A-A"] = dict(k=20.0, t0=numpy.pi, x_c=0.6, tail="flat")  # or "linear"
-
-integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[soft])
-```
-
-### Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `k` | float | — | Stiffness $[\mathrm{energy}\cdot\mathrm{radian}^{-2}]$ |
-| `t0` | float | — | Equilibrium angle $[\mathrm{radian}]$ |
-| `x_c` | float | — | Crossover deviation $[\mathrm{radian}]$, must be $> 0$ |
-| `tail` | str | `"flat"` | `"flat"` (torque releases to 0) or `"linear"` (constant-torque cap) |
-
----
-
-## 6. ExternalPatch (patchy attraction)
+## ExternalPatch (patchy attraction)
 
 ### Physics
 
@@ -331,6 +234,100 @@ sim.operations.integrator.forces.append(patch)
 
 ---
 
+## DirectorAlign (angle force)
+
+### Physics
+
+For an angle group `(i, j, k)`:
+- Particle `i` is the **oriented** particle whose body-frame x-axis `n̂ = rotate(q_i, x̂)`
+  should align with the target direction.
+- Particles `j` and `k` are **guide** particles that define the target direction
+  `d̂ = (r_k − r_j) / |r_k − r_j|`.
+
+The potential energy is:
+
+$$U = \frac{K}{2}\bigl(1 - \cos(m \theta + \varphi_0)\bigr), \quad \theta = \arccos(\hat{n} \cdot \hat{d})$$
+
+where $m$ is `multiplicity` (default 1) and $\varphi_0$ is `phase` (default 0).
+With the defaults this reduces to $U = \frac{K}{2}(1 - \hat{n}\cdot\hat{d})$.
+
+![DirectorAlign alignment energy vs director angle](docs/figures/directoralign.png)
+
+### Usage
+
+```python
+import hoomd
+from hoomd import align_angle
+
+align_force = align_angle.DirectorAlign()
+align_force.params["align"] = dict(k=20.0)  # polar (default)
+
+# Nematic (head-tail symmetric) alignment:
+align_force.params["align"] = dict(k=20.0, multiplicity=2)
+
+integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[align_force])
+integrator.integrate_rotational_dof = True  # required!
+```
+
+---
+
+## DirectorPair (anisotropic pair potential)
+
+### Physics
+
+An orientation-dependent pair potential between particles within a cutoff
+distance $r_c$:
+
+$$U_{ij} = -\varepsilon \cos(m \alpha + \varphi_0) g(r)$$
+
+with the smooth compact envelope
+
+$$g(r) = \left(1 - \frac{r^2}{r_c^2}\right)^2$$
+
+where $\alpha = \arccos(\hat{n}_i \cdot \hat{n}_j)$ is the angle between the
+particle directors, $\hat{n} = \mathrm{rotate}(q, \hat{x})$ is each particle's
+body-frame x-axis rotated into the lab frame, $m$ is `multiplicity` (default 1),
+and $\varphi_0$ is `phase` (default 0).
+
+| `multiplicity` | Symmetry | Minimum energy configuration |
+|----------------|----------|------------------------------|
+| 1 (default) | **Polar** | parallel only ($\alpha = 0$) |
+| 2 | **Nematic** | parallel *or* anti-parallel ($\alpha = 0$ or $\pi$) |
+
+The smooth compact envelope $g(r) = (1 - r^2/r_c^2)^2$ ensures both force and
+energy vanish continuously at the cutoff.
+
+![DirectorPair angular part and radial envelope](docs/figures/directorpair.png)
+
+### Usage
+
+```python
+from hoomd import align_angle
+
+nlist = hoomd.md.nlist.Cell(buffer=0.4)
+
+# Polar coupling (default, multiplicity=1):
+polar = align_angle.DirectorPair(nlist=nlist, default_r_cut=1.5)
+polar.params[("A", "A")] = dict(epsilon=4.0)
+
+# Nematic coupling (multiplicity=2):
+nematic = align_angle.DirectorPair(nlist=nlist, default_r_cut=1.5)
+nematic.params[("A", "A")] = dict(epsilon=4.0, multiplicity=2)
+
+integrator = hoomd.md.Integrator(dt=0.005, methods=[...], forces=[nematic])
+integrator.integrate_rotational_dof = True  # required!
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `epsilon` | float | — | Coupling strength $\varepsilon$ |
+| `multiplicity` | int | 1 | Angular multiplicity $m$ (1 = polar, 2 = nematic) |
+| `phase` | float | 0 | Phase offset $\varphi_0$ in radians |
+
+---
+
 ## Examples
 
 Example notebooks live in [`docs/`](docs/), one per force, each a single clean
@@ -339,11 +336,11 @@ pipeline (configure → forces → Langevin → visualize) that shows the force'
 
 | notebook | force(s) | shows |
 |----------|----------|-------|
-| [`demo_align_angle`](docs/demo_align_angle.ipynb) | `DirectorAlign` | orientations order onto a polymer's local tangent |
-| [`demo_director_pair`](docs/demo_director_pair.ipynb) | `DirectorPair` | spontaneous nematic vs polar ordering |
+| [`demo_soft_harmonic`](docs/demo_soft_harmonic.ipynb) | `SoftHarmonic` + `SoftHarmonicAngle` | thermal kinks, brittle-vs-ductile rupture, larger stable `dt` |
 | [`demo_sinsq_dihedral`](docs/demo_sinsq_dihedral.ipynb) | `SinSqDihedral` | bounded forces near collinear; a helix; larger stable `dt` |
 | [`demo_external_patch`](docs/demo_external_patch.ipynb) | `ExternalPatch` | patchy self-assembly into dimers and filaments |
-| [`demo_soft_harmonic`](docs/demo_soft_harmonic.ipynb) | `SoftHarmonic` + `SoftHarmonicAngle` | thermal kinks, brittle-vs-ductile rupture, larger stable `dt` |
+| [`demo_align_angle`](docs/demo_align_angle.ipynb) | `DirectorAlign` | orientations order onto a polymer's local tangent |
+| [`demo_director_pair`](docs/demo_director_pair.ipynb) | `DirectorPair` | spontaneous nematic vs polar ordering |
 
 The shared plotting/analysis helpers live in [`docs/demo_viz.py`](docs/demo_viz.py)
 (the simulation half of each notebook is self-contained and imports nothing from it).
@@ -394,7 +391,7 @@ finite-difference references on both CPU and GPU.
 
 This section provides the full derivations behind the orientation-coupling forces,
 from physical motivation to implementation-level detail. (The bonded saturating
-forces and the patch force are documented in §4–§6 above.)
+forces and the patch force are documented in their sections above.)
 
 ### Motivation
 
