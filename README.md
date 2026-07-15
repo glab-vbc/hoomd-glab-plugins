@@ -153,6 +153,8 @@ arbitrary preferred angle $t_0 \notin \{0, \pi\}$ the collinear-endpoint stiffne
 longer singularity-free — use `hoomd.md.angle.CosineSquared` for an arbitrary-$t_0$
 singularity-free form.
 
+![CosineAngle vs harmonic angle at equal k](docs/figures/cosineangle.png)
+
 ### Usage
 
 ```python
